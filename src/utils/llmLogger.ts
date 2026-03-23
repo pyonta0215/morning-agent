@@ -11,8 +11,7 @@ export interface LlmLog {
 }
 
 const MODEL_PRICING: Record<string, { inputPerM: number; outputPerM: number }> = {
-  'claude-sonnet-4-20250514': { inputPerM: 3, outputPerM: 15 },
-  'claude-haiku-4-5': { inputPerM: 0.8, outputPerM: 4 },
+  'claude-haiku-4-5-20251001': { inputPerM: 0.8, outputPerM: 4 },
 };
 
 export function calcCost(
