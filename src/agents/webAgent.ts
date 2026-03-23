@@ -140,12 +140,14 @@ ${urlList}
     });
 
     let data: WebAgentData = { byTopic: {} };
-    if (summaryResponse.content[0].type === 'text') {
+    const textBlock = summaryResponse.content.find((c) => c.type === 'text');
+    if (textBlock && textBlock.type === 'text') {
       try {
-        const text = summaryResponse.content[0].text;
-        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        const jsonMatch = textBlock.text.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           data = JSON.parse(jsonMatch[0]) as WebAgentData;
+        } else {
+          console.warn('[WebAgent] No JSON found in summary response');
         }
       } catch {
         console.warn('[WebAgent] Failed to parse summary response as JSON');

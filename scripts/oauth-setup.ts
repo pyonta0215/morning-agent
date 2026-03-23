@@ -3,6 +3,9 @@ import { google } from 'googleapis';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
 import * as fs from 'fs';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // プロジェクトルートの .env を読み込む
 const envPath = path.resolve(__dirname, '../.env');

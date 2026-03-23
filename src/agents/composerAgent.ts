@@ -2,8 +2,6 @@ import Anthropic from '@anthropic-ai/sdk';
 import type { SesClient } from '../clients/sesClient.js';
 import { type Agent, type AgentInput, type AgentOutput, type AppConfig } from './base.js';
 import { logLlm, calcCost } from '../utils/llmLogger.js';
-import type { CalendarAgentData } from './calendarAgent.js';
-import type { GmailAgentData } from './gmailAgent.js';
 import type { WebAgentData } from './webAgent.js';
 
 const MODEL = 'claude-sonnet-4-20250514';
@@ -11,8 +9,6 @@ const MODEL = 'claude-sonnet-4-20250514';
 interface EmailSections {
   subject: string;
   sections: {
-    schedule: string;
-    replyNeeded: string;
     topTopics: string;
     byTheme: string;
     readLater: string;
@@ -34,15 +30,7 @@ export class ComposerAgent implements Agent {
   async run(input: AgentInput): Promise<AgentOutput> {
     const startTime = Date.now();
     const context = input.context ?? [];
-
-    const calendarData = context.find((c) => c.agentId === 'calendar')?.data as
-      | CalendarAgentData
-      | undefined;
-    const gmailData = context.find((c) => c.agentId === 'gmail')?.data as
-      | GmailAgentData
-      | undefined;
     const webData = context.find((c) => c.agentId === 'web')?.data as WebAgentData | undefined;
-
     const dateStr = input.date.toISOString().split('T')[0];
 
     const response = await this.client.messages.create({
@@ -53,13 +41,7 @@ export class ComposerAgent implements Agent {
       messages: [
         {
           role: 'user',
-          content: `以下の情報をもとに、朝刊エージェント便のメール本文を作成してください。
-
-## カレンダー情報
-${JSON.stringify(calendarData ?? {}, null, 2)}
-
-## Gmail情報
-${JSON.stringify(gmailData ?? {}, null, 2)}
+          content: `以下のWeb収集情報をもとに、朝刊エージェント便のメール本文を作成してください。
 
 ## Web収集情報
 ${JSON.stringify(webData ?? {}, null, 2)}
@@ -68,11 +50,9 @@ ${JSON.stringify(webData ?? {}, null, 2)}
 {
   "subject": "[朝刊エージェント便] ${dateStr} 今日のブリーフ",
   "sections": {
-    "schedule": "今日の予定（マークダウン形式の箇条書き）",
-    "replyNeeded": "要返信メール（マークダウン形式の箇条書き）",
-    "topTopics": "今日の重要トピック（マークダウン形式の箇条書き）",
-    "byTheme": "テーマ別まとめ（マークダウン形式の箇条書き）",
-    "readLater": "あとで読む候補（マークダウン形式の箇条書き）"
+    "topTopics": "今日の重要トピック（マークダウン形式の箇条書き、全テーマから特に重要な3〜5件）",
+    "byTheme": "テーマ別まとめ（マークダウン形式、各テーマのトップニュースを箇条書き）",
+    "readLater": "あとで読む候補（マークダウン形式の箇条書き、スコアが低めだが気になる記事）"
   }
 }`,
         },
@@ -98,20 +78,20 @@ ${JSON.stringify(webData ?? {}, null, 2)}
     let emailData: EmailSections = {
       subject: `[朝刊エージェント便] ${dateStr} 今日のブリーフ`,
       sections: {
-        schedule: '情報なし',
-        replyNeeded: '情報なし',
         topTopics: '情報なし',
         byTheme: '情報なし',
         readLater: '情報なし',
       },
     };
 
-    if (response.content[0].type === 'text') {
+    const textBlock = response.content.find((c) => c.type === 'text');
+    if (textBlock && textBlock.type === 'text') {
       try {
-        const text = response.content[0].text;
-        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        const jsonMatch = textBlock.text.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           emailData = JSON.parse(jsonMatch[0]) as EmailSections;
+        } else {
+          console.warn('[ComposerAgent] No JSON found in response');
         }
       } catch {
         console.warn('[ComposerAgent] Failed to parse Claude response as JSON');
@@ -180,16 +160,6 @@ function buildHtmlEmail(emailData: EmailSections, dateStr: string): string {
 <h1>朝刊エージェント便 ${dateStr}</h1>
 
 <div class="section">
-<h2>📅 今日の予定</h2>
-${markdownToHtml(sections.schedule)}
-</div>
-
-<div class="section">
-<h2>📧 要返信メール</h2>
-${markdownToHtml(sections.replyNeeded)}
-</div>
-
-<div class="section">
 <h2>🔥 今日の重要トピック</h2>
 ${markdownToHtml(sections.topTopics)}
 </div>
@@ -212,12 +182,6 @@ ${markdownToHtml(sections.readLater)}
 function buildTextEmail(emailData: EmailSections): string {
   const { sections } = emailData;
   return `朝刊エージェント便
-
-== 今日の予定 ==
-${sections.schedule}
-
-== 要返信メール ==
-${sections.replyNeeded}
 
 == 今日の重要トピック ==
 ${sections.topTopics}

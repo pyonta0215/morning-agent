@@ -1,8 +1,4 @@
 import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
-import {
-  SecretsManagerClient,
-  GetSecretValueCommand,
-} from '@aws-sdk/client-secrets-manager';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
@@ -22,20 +18,6 @@ async function getParameter(name: string, region: string): Promise<string> {
   return response.Parameter?.Value ?? '';
 }
 
-interface GoogleOAuthSecret {
-  clientId: string;
-  clientSecret: string;
-  refreshToken: string;
-}
-
-async function getSecret(secretName: string, region: string): Promise<GoogleOAuthSecret> {
-  const client = new SecretsManagerClient({ region });
-  const command = new GetSecretValueCommand({ SecretId: secretName });
-  const response = await client.send(command);
-  const secretString = response.SecretString ?? '{}';
-  return JSON.parse(secretString) as GoogleOAuthSecret;
-}
-
 function loadTopics(): Topic[] {
   const yamlPath = path.resolve(__dirname, 'topics.yaml');
   const raw = fs.readFileSync(yamlPath, 'utf-8');
@@ -44,9 +26,6 @@ function loadTopics(): Topic[] {
 }
 
 export interface FullConfig extends AppConfig {
-  googleClientId: string;
-  googleClientSecret: string;
-  googleRefreshToken: string;
   awsRegion: string;
 }
 
@@ -57,9 +36,6 @@ export async function loadConfig(): Promise<FullConfig> {
   // ローカル開発時: process.env を優先して AWS APIをスキップ
   if (process.env.LOCAL_DEV === 'true') {
     return {
-      googleClientId: process.env.GOOGLE_CLIENT_ID ?? '',
-      googleClientSecret: process.env.GOOGLE_CLIENT_SECRET ?? '',
-      googleRefreshToken: process.env.GOOGLE_REFRESH_TOKEN ?? '',
       recipientEmail: process.env.RECIPIENT_EMAIL ?? '',
       senderEmail: process.env.SENDER_EMAIL ?? '',
       deliveryTime: process.env.DELIVERY_TIME ?? '07:00',
@@ -68,18 +44,14 @@ export async function loadConfig(): Promise<FullConfig> {
     };
   }
 
-  // 本番: Secrets Manager & Parameter Store から取得
-  const [oauthSecret, recipientEmail, senderEmail, deliveryTime] = await Promise.all([
-    getSecret('morning-agent/google-oauth', region),
+  // 本番: SSM Parameter Store から取得
+  const [recipientEmail, senderEmail, deliveryTime] = await Promise.all([
     getParameter('/morning-agent/recipient-email', region),
     getParameter('/morning-agent/sender-email', region),
     getParameter('/morning-agent/delivery-time', region),
   ]);
 
   return {
-    googleClientId: oauthSecret.clientId,
-    googleClientSecret: oauthSecret.clientSecret,
-    googleRefreshToken: oauthSecret.refreshToken,
     recipientEmail,
     senderEmail,
     deliveryTime,
