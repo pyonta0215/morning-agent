@@ -22,7 +22,8 @@ export class ComposerAgent implements Agent {
     const startTime = Date.now();
     const context = input.context ?? [];
     const webData = context.find((c) => c.agentId === 'web')?.data as WebAgentData | undefined;
-    const dateStr = input.date.toISOString().split('T')[0];
+    // JST (UTC+9) で日付文字列を生成（UTC 22:00 実行時も翌日JST日付になる）
+    const dateStr = input.date.toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' });
 
     const allItems = Object.values(webData?.byTopic ?? {}).flat();
 
