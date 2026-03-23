@@ -87,9 +87,11 @@ ${JSON.stringify(webData ?? {}, null, 2)}
     const textBlock = response.content.find((c) => c.type === 'text');
     if (textBlock && textBlock.type === 'text') {
       try {
-        const jsonMatch = textBlock.text.match(/\{[\s\S]*\}/);
+        const jsonMatch =
+          textBlock.text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/) ??
+          textBlock.text.match(/(\{[\s\S]*\})/);
         if (jsonMatch) {
-          emailData = JSON.parse(jsonMatch[0]) as EmailSections;
+          emailData = JSON.parse(jsonMatch[1] ?? jsonMatch[0]) as EmailSections;
         } else {
           console.warn('[ComposerAgent] No JSON found in response');
         }

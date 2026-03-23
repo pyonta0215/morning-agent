@@ -33,6 +33,7 @@ interface FetchResult {
 
 export async function handleWebFetch(input: FetchInput): Promise<FetchResult> {
   const { url, maxLength = 3000 } = input;
+  console.log(`[webFetch] fetching: ${url}`);
 
   try {
     const response = await axios.get<string>(url, {
@@ -63,9 +64,11 @@ export async function handleWebFetch(input: FetchInput): Promise<FetchResult> {
       .trim()
       .substring(0, maxLength);
 
+    console.log(`[webFetch] ok: ${url} (${text.length} chars)`);
     return { url, text };
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
+    console.warn(`[webFetch] failed: ${url} — ${error}`);
     return { url, error: `取得失敗: ${error}` };
   }
 }

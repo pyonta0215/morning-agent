@@ -110,7 +110,7 @@ ${urlList}
     // 集約: JSON形式でWebItemを出力させる
     const summaryResponse = await this.client.messages.create({
       model: MODEL,
-      max_tokens: 2048,
+      max_tokens: 8096,
       system:
         'あなたはニュース編集者です。収集した情報を重要度でフィルタリングし、JSON形式で出力してください。',
       messages: [
@@ -161,16 +161,25 @@ ${urlList}
     let data: WebAgentData = { byTopic: {} };
     const textBlock = summaryResponse.content.find((c) => c.type === 'text');
     if (textBlock && textBlock.type === 'text') {
+      console.log('[WebAgent] summary raw response:\n', textBlock.text);
       try {
-        const jsonMatch = textBlock.text.match(/\{[\s\S]*\}/);
+        // ```json ... ``` ブロックと裸の { ... } の両方に対応
+        const jsonMatch =
+          textBlock.text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/) ??
+          textBlock.text.match(/(\{[\s\S]*\})/);
         if (jsonMatch) {
-          data = JSON.parse(jsonMatch[0]) as WebAgentData;
+          data = JSON.parse(jsonMatch[1] ?? jsonMatch[0]) as WebAgentData;
+          const topicCount = Object.keys(data.byTopic).length;
+          const itemCount = Object.values(data.byTopic).flat().length;
+          console.log(`[WebAgent] parsed: ${topicCount} topics, ${itemCount} items`);
         } else {
           console.warn('[WebAgent] No JSON found in summary response');
         }
       } catch {
         console.warn('[WebAgent] Failed to parse summary response as JSON');
       }
+    } else {
+      console.warn('[WebAgent] No text block in summary response');
     }
 
     return {
