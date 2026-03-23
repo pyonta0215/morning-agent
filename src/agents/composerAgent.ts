@@ -111,6 +111,14 @@ ${allItems.map((item) => `- [${item.topic}] ${item.title} (score:${item.score})`
   }
 }
 
+// ---- 定数 --------------------------------------------------------
+
+/** スコア別の抜粋最大文字数 */
+const EXCERPT_MAX: Record<number, number> = { 5: 200, 4: 100, 3: 60, 2: 0, 1: 0 };
+
+/** スコア別のグリッドspan（6カラム基準） */
+const GRID_SPAN: Record<number, number> = { 5: 6, 4: 3, 3: 2, 2: 2, 1: 2 };
+
 // ---- HTML ビルダー ------------------------------------------------
 
 function buildHtmlEmail(
@@ -120,41 +128,20 @@ function buildHtmlEmail(
 ): string {
   const byTopic = webData?.byTopic ?? {};
 
-  const pickCards = picks
-    .map(
-      (p) => `
+  const pickSection =
+    picks.length > 0
+      ? `<div class="section">
+    <div class="section-label">🔥 今日の注目</div>
+    ${picks.map((p) => `
     <div class="pick-card">
       <div class="pick-title">${escHtml(p.title)}</div>
       <div class="pick-comment">${escHtml(p.comment)}</div>
-    </div>`
-    )
-    .join('');
+    </div>`).join('')}
+  </div>`
+      : '';
 
   const topicSections = Object.entries(byTopic)
-    .map(([topic, items]) => {
-      const cards = items
-        .sort((a, b) => b.score - a.score)
-        .map((item) => articleCard(item))
-        .join('');
-      return `
-    <div class="topic-section">
-      <h2 class="topic-heading">${escHtml(topic)}</h2>
-      ${cards}
-    </div>`;
-    })
-    .join('');
-
-  const allItems = Object.values(byTopic).flat();
-  const readLaterItems = allItems
-    .filter((item) => item.score <= 3)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 5);
-
-  const readLaterList = readLaterItems
-    .map(
-      (item) =>
-        `<li><a href="${escHtml(item.url)}" class="read-later-link">${escHtml(item.title)}</a></li>`
-    )
+    .map(([topic, items]) => topicSection(topic, items))
     .join('');
 
   return `<!DOCTYPE html>
@@ -165,164 +152,166 @@ function buildHtmlEmail(
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Segoe UI', sans-serif;
-    background: #f0f2f5;
-    color: #1a1a2e;
-    padding: 16px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Yu Gothic', 'Segoe UI', sans-serif;
+    background: #e8eaed;
+    color: #111;
+    padding: 12px;
   }
-  .container { max-width: 600px; margin: 0 auto; }
+  .container { max-width: 620px; margin: 0 auto; }
 
-  /* ヘッダー */
-  .header {
-    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  /* ── 新聞ヘッダー ── */
+  .masthead {
+    background: #111;
     color: #fff;
-    border-radius: 12px;
-    padding: 24px 20px;
-    margin-bottom: 16px;
-  }
-  .header-label {
-    font-size: 11px;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: #e94560;
-    margin-bottom: 6px;
-  }
-  .header-title { font-size: 22px; font-weight: 700; }
-  .header-date { font-size: 13px; color: #aaa; margin-top: 4px; }
-
-  /* セクション見出し */
-  .section { margin-bottom: 20px; }
-  .section-heading {
-    font-size: 13px;
-    font-weight: 700;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    color: #e94560;
-    border-bottom: 2px solid #e94560;
-    padding-bottom: 6px;
+    text-align: center;
+    padding: 18px 16px 14px;
+    border-radius: 4px 4px 0 0;
+    border-bottom: 3px solid #c00;
     margin-bottom: 12px;
   }
+  .masthead-name {
+    font-size: 26px;
+    font-weight: 900;
+    letter-spacing: 4px;
+    font-feature-settings: "palt";
+  }
+  .masthead-date {
+    font-size: 11px;
+    color: #aaa;
+    margin-top: 4px;
+    letter-spacing: 1px;
+  }
 
-  /* 注目ピックカード */
+  /* ── セクション ── */
+  .section { margin-bottom: 16px; }
+  .section-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #c00;
+    border-bottom: 2px solid #c00;
+    padding-bottom: 4px;
+    margin-bottom: 10px;
+  }
+
+  /* ── 注目ピック ── */
   .pick-card {
     background: #fff;
-    border-left: 4px solid #e94560;
-    border-radius: 0 8px 8px 0;
-    padding: 12px 14px;
-    margin-bottom: 10px;
-    box-shadow: 0 1px 4px rgba(0,0,0,.06);
-  }
-  .pick-title { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
-  .pick-comment { font-size: 13px; color: #555; line-height: 1.5; }
-
-  /* トピック見出し */
-  .topic-section { margin-bottom: 24px; }
-  .topic-heading {
-    font-size: 16px;
-    font-weight: 700;
-    background: #1a1a2e;
-    color: #fff;
-    padding: 8px 14px;
-    border-radius: 6px;
-    margin-bottom: 10px;
-  }
-
-  /* 記事カード */
-  .article-card {
-    background: #fff;
-    border-radius: 8px;
-    padding: 12px 14px;
+    border-left: 3px solid #c00;
+    padding: 10px 12px;
     margin-bottom: 8px;
-    box-shadow: 0 1px 4px rgba(0,0,0,.06);
+    border-radius: 0 4px 4px 0;
   }
-  .article-title {
-    font-size: 14px;
-    font-weight: 600;
-    margin-bottom: 5px;
+  .pick-title { font-size: 13px; font-weight: 700; margin-bottom: 3px; }
+  .pick-comment { font-size: 12px; color: #555; line-height: 1.5; }
+
+  /* ── トピックブロック ── */
+  .topic-block {
+    background: #fff;
+    border-radius: 4px;
+    margin-bottom: 16px;
+    overflow: hidden;
+    border: 1px solid #ddd;
   }
-  .article-title a {
-    color: #1a1a2e;
-    text-decoration: none;
-  }
-  .article-title a:hover { text-decoration: underline; }
-  .article-summary { font-size: 13px; color: #555; line-height: 1.55; margin-bottom: 6px; }
-  .article-meta { font-size: 11px; color: #999; }
-  .score-dot {
-    display: inline-block;
-    width: 8px; height: 8px;
-    border-radius: 50%;
-    margin-right: 2px;
-    vertical-align: middle;
+  .topic-banner {
+    background: #111;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 6px 12px;
+    letter-spacing: 1px;
+    border-bottom: 2px solid #c00;
   }
 
-  /* あとで読む */
-  .read-later-list { list-style: none; }
-  .read-later-list li { margin-bottom: 6px; }
-  .read-later-link { font-size: 13px; color: #e94560; }
+  /* ── グリッド（6カラム） ── */
+  .article-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 1px;
+    background: #ddd; /* gap の色 */
+  }
 
-  /* フッター */
+  /* スコア別セル */
+  .cell { background: #fff; padding: 10px 11px; overflow: hidden; }
+  .cell-6 { grid-column: span 6; border-bottom: 1px solid #e0e0e0; }
+  .cell-3 { grid-column: span 3; }
+  .cell-2 { grid-column: span 2; }
+
+  /* スコア5: ヒーロー */
+  .cell-6 .art-title { font-size: 17px; font-weight: 800; line-height: 1.3; }
+  .cell-6 .art-excerpt { font-size: 13px; color: #333; margin-top: 5px; line-height: 1.6; }
+
+  /* スコア4: フィーチャー */
+  .cell-3 .art-title { font-size: 14px; font-weight: 700; line-height: 1.3; }
+  .cell-3 .art-excerpt { font-size: 12px; color: #444; margin-top: 4px; line-height: 1.5; }
+
+  /* スコア3: スタンダード */
+  .cell-2 .art-title { font-size: 12px; font-weight: 600; line-height: 1.3; }
+  .cell-2 .art-excerpt { font-size: 11px; color: #555; margin-top: 3px; line-height: 1.4; }
+
+  .art-title a { color: #111; text-decoration: none; }
+  .art-title a:hover { text-decoration: underline; }
+  .art-score { font-size: 10px; color: #c00; font-weight: 700; margin-top: 5px; }
+
+  /* ── フッター ── */
   .footer {
     text-align: center;
-    font-size: 11px;
+    font-size: 10px;
     color: #999;
-    padding: 16px 0 8px;
+    padding: 12px 0 4px;
+    border-top: 1px solid #ccc;
+    margin-top: 8px;
   }
 </style>
 </head>
 <body>
 <div class="container">
 
-  <div class="header">
-    <div class="header-label">Morning Agent</div>
-    <div class="header-title">朝刊エージェント便</div>
-    <div class="header-date">${dateStr}</div>
+  <div class="masthead">
+    <div class="masthead-name">朝刊エージェント便</div>
+    <div class="masthead-date">${dateStr} &nbsp;|&nbsp; Powered by Claude Haiku</div>
   </div>
 
-  ${
-    picks.length > 0
-      ? `<div class="section">
-    <div class="section-heading">🔥 今日の注目</div>
-    ${pickCards}
-  </div>`
-      : ''
-  }
+  ${pickSection}
 
-  <div class="section">
-    <div class="section-heading">📰 テーマ別ニュース</div>
-    ${topicSections || '<p style="color:#999;font-size:13px;">記事が見つかりませんでした</p>'}
-  </div>
+  ${topicSections || '<p style="color:#999;font-size:13px;padding:8px;">記事が見つかりませんでした</p>'}
 
-  ${
-    readLaterItems.length > 0
-      ? `<div class="section">
-    <div class="section-heading">📌 あとで読む</div>
-    <div style="background:#fff;border-radius:8px;padding:12px 14px;box-shadow:0 1px 4px rgba(0,0,0,.06)">
-      <ul class="read-later-list">${readLaterList}</ul>
-    </div>
-  </div>`
-      : ''
-  }
-
-  <div class="footer">朝刊エージェント便 — Powered by Claude Haiku</div>
+  <div class="footer">朝刊エージェント便 — 情報は各リンク先でご確認ください</div>
 </div>
 </body>
 </html>`;
 }
 
-function articleCard(item: WebItem): string {
-  const scoreDots = Array.from({ length: 5 }, (_, i) => {
-    const color = i < item.score ? '#e94560' : '#e0e0e0';
-    return `<span class="score-dot" style="background:${color}"></span>`;
-  }).join('');
+function topicSection(topic: string, items: WebItem[]): string {
+  const sorted = [...items].sort((a, b) => b.score - a.score);
 
-  return `
-  <div class="article-card">
-    <div class="article-title">
-      <a href="${escHtml(item.url)}" target="_blank" rel="noopener">${escHtml(item.title)}</a>
-    </div>
-    <div class="article-summary">${escHtml(item.summary)}</div>
-    <div class="article-meta">${scoreDots} 重要度 ${item.score}/5</div>
-  </div>`;
+  const cells = sorted.map((item) => {
+    const span = GRID_SPAN[item.score] ?? 2;
+    const maxChars = EXCERPT_MAX[item.score] ?? 0;
+    const excerpt =
+      maxChars > 0
+        ? `<div class="art-excerpt">${escHtml(item.summary.slice(0, maxChars))}${item.summary.length > maxChars ? '…' : ''}</div>`
+        : '';
+    const scoreLabel = '●'.repeat(item.score) + '○'.repeat(5 - item.score);
+
+    return `<div class="cell cell-${span}">
+  <div class="art-title"><a href="${escHtml(item.url)}" target="_blank" rel="noopener">${escHtml(item.title)}</a></div>
+  ${excerpt}
+  <div class="art-score">${scoreLabel}</div>
+</div>`;
+  });
+
+  return `<div class="topic-block">
+  <div class="topic-banner">${escHtml(topic)}</div>
+  <div class="article-grid">
+    ${cells.join('\n    ')}
+  </div>
+</div>`;
+}
+
+function articleCard(_item: WebItem): string {
+  return ''; // topicSection に統合したため未使用
 }
 
 function escHtml(str: string): string {
