@@ -1,0 +1,19 @@
+topics:
+  - id: ai
+    label: AI・LLM
+    keywords: [Claude, GPT, Gemini, LLM, 生成AI]
+    urls:
+      - https://www.anthropic.com/news
+      - https://openai.com/blog
+
+  - id: finance
+    label: 金融・投資
+    keywords: [日経平均, S&P500, NISA, 投資信託]
+    urls:
+      - https://www.nikkei.com/markets/
+
+  - id: game
+    label: ゲーム・Nintendo
+    keywords: [Nintendo, Switch, ゲーム新作]
+    urls:
+      - https://www.nintendo.co.jp/news/

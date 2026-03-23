@@ -1,0 +1,35 @@
+{
+  "name": "morning-agent",
+  "version": "1.0.0",
+  "description": "朝刊エージェント便 - 毎朝のブリーフィングメールを自動生成するLambda",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node22 --outfile=dist/index.js --external:@aws-sdk/*",
+    "deploy": "npm run build && cd infra && npx cdk deploy --all",
+    "test-run": "npx ts-node scripts/test-run.ts",
+    "oauth-setup": "npx ts-node scripts/oauth-setup.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.80.0",
+    "@aws-sdk/client-secrets-manager": "^3.1014.0",
+    "@aws-sdk/client-ses": "^3.1014.0",
+    "@aws-sdk/client-ssm": "^3.1014.0",
+    "axios": "^1.13.6",
+    "dotenv": "^17.3.1",
+    "googleapis": "^171.4.0",
+    "js-yaml": "^4.1.1"
+  },
+  "devDependencies": {
+    "@types/dotenv": "^6.1.1",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^25.5.0",
+    "aws-cdk-lib": "^2.244.0",
+    "constructs": "^10.5.1",
+    "esbuild": "^0.27.4",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}
