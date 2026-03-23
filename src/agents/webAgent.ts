@@ -28,17 +28,35 @@ export class WebAgent implements Agent {
 
   async run(input: AgentInput): Promise<AgentOutput> {
     const startTime = Date.now();
+    const dateStr = input.date.toISOString().split('T')[0]; // YYYY-MM-DD
 
-    const allUrls = input.config.topics.flatMap((topic) =>
-      topic.urls.map((url) => ({ url, topicId: topic.id, topicLabel: topic.label }))
-    );
+    // 静的URLに加えて、各トピックのキーワードでGoogle News RSSを検索
+    const allUrls = input.config.topics.flatMap((topic) => {
+      const staticUrls = topic.urls.map((url) => ({
+        url,
+        topicId: topic.id,
+        topicLabel: topic.label,
+      }));
+
+      const query = encodeURIComponent(
+        `${topic.keywords.join(' OR ')} after:${dateStr}`
+      );
+      const newsSearchUrl = {
+        url: `https://news.google.com/rss/search?q=${query}&hl=ja&gl=JP&ceid=JP:ja`,
+        topicId: topic.id,
+        topicLabel: `${topic.label}（本日のニュース検索）`,
+      };
+
+      return [...staticUrls, newsSearchUrl];
+    });
 
     const urlList = allUrls.map((u) => `- ${u.url} (トピック: ${u.topicLabel})`).join('\n');
 
     const messages: MessageParam[] = [
       {
         role: 'user',
-        content: `以下のURLからWebページを収集し、重要なニュースや情報をトピック別にまとめてください。
+        content: `今日は ${dateStr} です。以下のURLから本日のニュース・情報を収集してください。
+Google News RSS の結果は今日以降の記事のみ対象とし、古い情報は除外してください。
 
 収集するURL一覧:
 ${urlList}
@@ -99,7 +117,8 @@ ${urlList}
         ...messages,
         {
           role: 'user',
-          content: `収集した情報をもとに、テーマ別に重要度スコア（1-5）付きで3〜5件に絞り込んでください。
+          content: `収集した情報をもとに、${dateStr} の記事を中心に、テーマ別に重要度スコア（1-5）付きで3〜5件に絞り込んでください。
+日付が古い記事（${dateStr} より前）はスコアを低くしてください。
 
 出力形式（JSON）:
 {
