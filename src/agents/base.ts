@@ -9,6 +9,7 @@ export interface AppConfig {
   deliveryTime: string;
   recipientEmail: string;
   senderEmail: string;
+  sesRegion: string;
   topics: Topic[];
 }
 

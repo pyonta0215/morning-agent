@@ -74,18 +74,37 @@ npm run test-run
 
 ### 5. ビルド & AWS デプロイ
 
+事前に SSM Parameter Store へ必要な値を登録してください:
+
+```bash
+# リージョン: ap-northeast-1 (Lambda デプロイ先)
+aws ssm put-parameter --name /morning-agent/recipient-email \
+  --value "your@email.com" --type String --region ap-northeast-1
+aws ssm put-parameter --name /morning-agent/sender-email \
+  --value "sender@example.com" --type String --region ap-northeast-1
+aws ssm put-parameter --name /morning-agent/delivery-time \
+  --value "07:00" --type String --region ap-northeast-1
+aws ssm put-parameter --name /morning-agent/anthropic-api-key \
+  --value "sk-ant-..." --type SecureString --region ap-northeast-1
+```
+
+ビルド & デプロイ:
+
 ```bash
 npm run build   # esbuild でバンドル + topics.yaml を dist/ にコピー
 npm run deploy  # CDK で Lambda + EventBridge をデプロイ
 ```
 
-デプロイ前に SSM Parameter Store を設定:
+CDK bootstrap が未済みの場合は先に実施:
 
 ```bash
-aws ssm put-parameter --name /morning-agent/recipient-email --value "your@email.com" --type String
-aws ssm put-parameter --name /morning-agent/sender-email --value "sender@email.com" --type String
-aws ssm put-parameter --name /morning-agent/delivery-time --value "07:00" --type String
+npx cdk bootstrap aws://ACCOUNT_ID/ap-northeast-1
 ```
+
+**リージョン構成:**
+- Lambda / SSM: `ap-northeast-1` (東京)
+- SES: `us-east-1` (バージニア) — 送信元ドメインをこのリージョンで Verify する
+- Lambda の環境変数 `SES_REGION=us-east-1` で自動切り替え
 
 ## ローカルテスト コマンド一覧
 
@@ -154,6 +173,7 @@ src/
 scripts/
   test-run.ts               # ローカルテスト実行スクリプト
 infra/
+  cdk.json                  # CDK 設定 (app: npx tsx bin/app.ts)
   bin/app.ts                # CDK アプリエントリポイント
   lib/
     lambdaStack.ts          # Lambda + IAM 最小権限

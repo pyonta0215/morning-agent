@@ -17,7 +17,7 @@ export class MorningAgentLambdaStack extends cdk.Stack {
       memorySize: 512,
       environment: {
         NODE_ENV: 'production',
-        AWS_REGION_NAME: 'ap-northeast-1',
+        SES_REGION: 'us-east-1',
       },
     });
 

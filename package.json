@@ -5,7 +5,7 @@
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
-    "build": "esbuild src/index.ts --bundle --platform=node --target=node22 --outfile=dist/index.js --external:@aws-sdk/* && cp src/config/topics.yaml dist/topics.yaml",
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node22 --outfile=dist/index.js --external:@aws-sdk/* --log-override:empty-import-meta=silent && cp src/config/topics.yaml dist/topics.yaml",
     "deploy": "npm run build && cd infra && npx cdk deploy --all",
     "test-run": "npx tsx scripts/test-run.ts",
     "oauth-setup": "npx tsx scripts/oauth-setup.ts"
@@ -31,6 +31,7 @@
     "aws-cdk-lib": "^2.244.0",
     "constructs": "^10.5.1",
     "esbuild": "^0.27.4",
+    "source-map-support": "^0.5.21",
     "ts-node": "^10.9.2",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"

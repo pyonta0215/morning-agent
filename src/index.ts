@@ -14,7 +14,7 @@ export const handler = async (event: unknown, context?: Context): Promise<void> 
 
   try {
     const config = await loadConfig();
-    const sesClient = new SesClient(config.awsRegion);
+    const sesClient = new SesClient(config.sesRegion);
     const dryRun = process.env.DRY_RUN === 'true';
 
     const pipeline = new Pipeline();
