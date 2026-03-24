@@ -13,7 +13,9 @@ export class ComposerAgent implements Agent {
   constructor(
     private sesClient: SesClient,
     private config: AppConfig,
-    private dryRun: boolean = false
+    private dryRun: boolean = false,
+    /** trueのとき: メール送信せずsubject/htmlBody/textBodyをdataに返す */
+    private buildOnly: boolean = false
   ) {
     this.client = new Anthropic();
   }
@@ -88,6 +90,16 @@ ${allItems.map((item) => `- [${item.topic}] ${item.title} (score:${item.score})`
     const subject = `[朝刊エージェント便] ${dateStr} 今日のブリーフ`;
     const htmlBody = buildHtmlEmail(dateStr, webData, picks);
     const textBody = buildTextEmail(dateStr, webData, picks);
+
+    if (this.buildOnly) {
+      console.log('[ComposerAgent] buildOnly: returning email content without sending');
+      return {
+        agentId: this.id,
+        data: { subject, htmlBody, textBody, topicsCount: allItems.length },
+        tokensUsed: inputTokens + outputTokens,
+        durationMs,
+      };
+    }
 
     if (!this.dryRun) {
       await this.sesClient.sendEmail({
@@ -271,7 +283,7 @@ function buildHtmlEmail(
 
   <div class="masthead">
     <div class="masthead-name">朝刊エージェント便</div>
-    <div class="masthead-date">${dateStr} &nbsp;|&nbsp; Powered by Claude Haiku</div>
+    <div class="masthead-date">${dateStr}</div>
   </div>
 
   ${pickSection}
@@ -355,6 +367,6 @@ function buildTextEmail(
   });
 
   lines.push('---');
-  lines.push('朝刊エージェント便 — Powered by Claude Haiku');
+  lines.push('朝刊エージェント便');
   return lines.join('\n');
 }

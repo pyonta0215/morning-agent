@@ -24,19 +24,32 @@ export class MorningAgentSchedulerStack extends cdk.Stack {
       })
     );
 
-    new scheduler.CfnSchedule(this, 'MorningAgentSchedule', {
-      name: 'morning-agent-daily',
-      description: '朝刊エージェント便 毎朝7:00 JST (UTC 22:00) に実行',
-      scheduleExpression: 'cron(0 22 * * ? *)',
+    // 収集フェーズ: 6:15 JST (21:15 UTC 前日) — ニュース収集・LLM統合・S3保存
+    new scheduler.CfnSchedule(this, 'CollectSchedule', {
+      name: 'morning-agent-collect',
+      description: '朝刊エージェント便 収集フェーズ 毎朝6:15 JST (UTC 21:15) に実行',
+      scheduleExpression: 'cron(15 21 * * ? *)',
       scheduleExpressionTimezone: 'UTC',
-      flexibleTimeWindow: {
-        mode: 'FLEXIBLE',
-        maximumWindowInMinutes: 5,
-      },
+      flexibleTimeWindow: { mode: 'OFF' },
       target: {
         arn: props.lambdaFunction.functionArn,
         roleArn: schedulerRole.roleArn,
-        input: JSON.stringify({ source: 'scheduler' }),
+        input: JSON.stringify({ source: 'scheduler', phase: 'collect' }),
+      },
+      state: 'ENABLED',
+    });
+
+    // 送信フェーズ: 6:30 JST (21:30 UTC 前日) — S3から読み出してメール送信
+    new scheduler.CfnSchedule(this, 'SendSchedule', {
+      name: 'morning-agent-send',
+      description: '朝刊エージェント便 送信フェーズ 毎朝6:30 JST (UTC 21:30) に実行',
+      scheduleExpression: 'cron(30 21 * * ? *)',
+      scheduleExpressionTimezone: 'UTC',
+      flexibleTimeWindow: { mode: 'OFF' },
+      target: {
+        arn: props.lambdaFunction.functionArn,
+        roleArn: schedulerRole.roleArn,
+        input: JSON.stringify({ source: 'scheduler', phase: 'send' }),
       },
       state: 'ENABLED',
     });

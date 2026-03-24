@@ -1,6 +1,7 @@
 import * as cdk from 'aws-cdk-lib';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as s3 from 'aws-cdk-lib/aws-s3';
 import { Construct } from 'constructs';
 
 export class MorningAgentLambdaStack extends cdk.Stack {
@@ -8,6 +9,18 @@ export class MorningAgentLambdaStack extends cdk.Stack {
 
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
+
+    // 収集〜送信フェーズ間のメール中間保存用バケット
+    const storageBucket = new s3.Bucket(this, 'StorageBucket', {
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      autoDeleteObjects: true,
+      lifecycleRules: [
+        {
+          // 送信漏れで残ったオブジェクトを1日後に自動削除
+          expiration: cdk.Duration.days(1),
+        },
+      ],
+    });
 
     this.lambdaFunction = new lambda.Function(this, 'MorningAgentFunction', {
       runtime: lambda.Runtime.NODEJS_22_X,
@@ -18,15 +31,16 @@ export class MorningAgentLambdaStack extends cdk.Stack {
       environment: {
         NODE_ENV: 'production',
         SES_REGION: 'us-east-1',
+        STORAGE_BUCKET: storageBucket.bucketName,
       },
     });
 
-    // ses:SendEmail（最小権限: 宛先メールアドレスを実際の値に絞る場合はリソースARNを指定）
+    // ses:SendEmail
     this.lambdaFunction.addToRolePolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: ['ses:SendEmail', 'ses:SendRawEmail'],
-        resources: ['*'], // SESの送信権限はリソースARN指定が複雑なため * を使用
+        resources: ['*'],
       })
     );
 
@@ -51,5 +65,9 @@ export class MorningAgentLambdaStack extends cdk.Stack {
         ],
       })
     );
+
+    // S3: 中間保存バケットへの読み書き・削除
+    storageBucket.grantReadWrite(this.lambdaFunction);
+    storageBucket.grantDelete(this.lambdaFunction);
   }
 }
