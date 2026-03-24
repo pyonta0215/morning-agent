@@ -86,7 +86,7 @@ ${allItems.map((item) => `- [${item.topic}] ${item.title} (score:${item.score})`
       }
     }
 
-    const subject = `[朝刊エージェント便] ${dateStr} 今日のブリーフ`;
+    const subject = `[朝刊エージェント便] ${dateStr} ピックアップ情報`;
     const htmlBody = buildHtmlEmail(dateStr, webData, picks);
     const textBody = buildTextEmail(dateStr, webData, picks);
 
