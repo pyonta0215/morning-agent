@@ -15,7 +15,8 @@ export class ComposerAgent implements Agent {
     private config: AppConfig,
     private dryRun: boolean = false,
     /** trueのとき: メール送信せずsubject/htmlBody/textBodyをdataに返す */
-    private buildOnly: boolean = false
+    private buildOnly: boolean = false,
+    private edition: 'morning' | 'evening' = 'morning'
   ) {
     this.client = new Anthropic();
   }
@@ -86,9 +87,10 @@ ${allItems.map((item) => `- [${item.topic}] ${item.title} (score:${item.score})`
       }
     }
 
-    const subject = `[朝刊エージェント便] ${dateStr} ピックアップ情報`;
-    const htmlBody = buildHtmlEmail(dateStr, webData, picks);
-    const textBody = buildTextEmail(dateStr, webData, picks);
+    const editionLabel = this.edition === 'evening' ? '夕刊' : '朝刊';
+    const subject = `[${editionLabel}エージェント便] ${dateStr} ピックアップ情報`;
+    const htmlBody = buildHtmlEmail(dateStr, webData, picks, this.edition);
+    const textBody = buildTextEmail(dateStr, webData, picks, this.edition);
 
     if (this.buildOnly) {
       console.log('[ComposerAgent] buildOnly: returning email content without sending');
@@ -136,8 +138,10 @@ const GRID_SPAN: Record<number, number> = { 5: 6, 4: 3, 3: 2, 2: 2, 1: 2 };
 function buildHtmlEmail(
   dateStr: string,
   webData: WebAgentData | undefined,
-  picks: Array<{ title: string; comment: string }>
+  picks: Array<{ title: string; comment: string }>,
+  edition: 'morning' | 'evening' = 'morning'
 ): string {
+  const editionLabel = edition === 'evening' ? '夕刊' : '朝刊';
   const byTopic = webData?.byTopic ?? {};
 
   const pickSection =
@@ -281,7 +285,7 @@ function buildHtmlEmail(
 <div class="container">
 
   <div class="masthead">
-    <div class="masthead-name">朝刊エージェント便</div>
+    <div class="masthead-name">${editionLabel}エージェント便</div>
     <div class="masthead-date">${dateStr}</div>
   </div>
 
@@ -289,7 +293,7 @@ function buildHtmlEmail(
 
   ${topicSections || '<p style="color:#999;font-size:13px;padding:8px;">記事が見つかりませんでした</p>'}
 
-  <div class="footer">朝刊エージェント便 — 情報は各リンク先でご確認ください</div>
+  <div class="footer">${editionLabel}エージェント便 — 情報は各リンク先でご確認ください</div>
 </div>
 </body>
 </html>`;
@@ -348,10 +352,12 @@ function escHtml(str: string): string {
 function buildTextEmail(
   dateStr: string,
   webData: WebAgentData | undefined,
-  picks: Array<{ title: string; comment: string }>
+  picks: Array<{ title: string; comment: string }>,
+  edition: 'morning' | 'evening' = 'morning'
 ): string {
+  const editionLabel = edition === 'evening' ? '夕刊' : '朝刊';
   const byTopic = webData?.byTopic ?? {};
-  const lines: string[] = [`朝刊エージェント便 ${dateStr}`, ''];
+  const lines: string[] = [`${editionLabel}エージェント便 ${dateStr}`, ''];
 
   if (picks.length > 0) {
     lines.push('== 今日の注目 ==');
@@ -375,6 +381,6 @@ function buildTextEmail(
   });
 
   lines.push('---');
-  lines.push('朝刊エージェント便');
+  lines.push(`${editionLabel}エージェント便`);
   return lines.join('\n');
 }
