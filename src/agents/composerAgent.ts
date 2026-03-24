@@ -24,8 +24,7 @@ export class ComposerAgent implements Agent {
     const startTime = Date.now();
     const context = input.context ?? [];
     const webData = context.find((c) => c.agentId === 'web')?.data as WebAgentData | undefined;
-    // JST (UTC+9) で日付文字列を生成（UTC 22:00 実行時も翌日JST日付になる）
-    const dateStr = input.date.toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' });
+    const dateStr = formatDateJST(input.date);
 
     const allItems = Object.values(webData?.byTopic ?? {}).flat();
 
@@ -325,6 +324,15 @@ function topicSection(topic: string, items: WebItem[]): string {
 
 function articleCard(_item: WebItem): string {
   return ''; // topicSection に統合したため未使用
+}
+
+/** JST の日付を YYYY/MM/DD(曜) 形式で返す */
+export function formatDateJST(date: Date): string {
+  const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
+  const iso = date.toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' }); // YYYY-MM-DD
+  const [year, month, day] = iso.split('-');
+  const jstNoon = new Date(`${iso}T12:00:00+09:00`);
+  return `${year}/${month}/${day}(${weekdays[jstNoon.getDay()]})`;
 }
 
 function escHtml(str: string): string {

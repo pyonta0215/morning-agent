@@ -4,7 +4,7 @@ import { loadConfig, setTraceId } from './config/settings.js';
 import { SesClient } from './clients/sesClient.js';
 import { Pipeline } from './orchestrator/pipeline.js';
 import { WebAgent } from './agents/webAgent.js';
-import { ComposerAgent } from './agents/composerAgent.js';
+import { ComposerAgent, formatDateJST } from './agents/composerAgent.js';
 import type { AgentInput } from './agents/base.js';
 
 const S3_KEY = 'pending/email.json';
@@ -73,7 +73,7 @@ async function runCollectPhase(traceId: string): Promise<void> {
     throw new Error('[index] ComposerAgent did not return expected email content');
   }
 
-  const dateStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' });
+  const dateStr = formatDateJST(new Date());
   await saveEmailToS3(s3, bucket, {
     date: dateStr,
     subject: data.subject,
@@ -111,7 +111,7 @@ async function runSendPhase(traceId: string): Promise<void> {
   if (!stored) {
     // 収集フェーズのデータが存在しない場合: エラー通知メールを送信
     console.error('[index] No stored email found in S3. Sending error notification.');
-    const dateStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' });
+    const dateStr = formatDateJST(new Date());
     if (!dryRun) {
       await sesClient.sendEmail({
         from: config.senderEmail,
