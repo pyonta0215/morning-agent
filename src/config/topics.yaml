@@ -18,3 +18,10 @@ topics:
     urls:
       - https://www.nintendo.co.jp/news/
 
+  - id: paper
+    label: AI論文
+    keywords: []
+    urls:
+      - https://rss.arxiv.org/rss/cs.CL
+      - https://rss.arxiv.org/rss/cs.AI
+

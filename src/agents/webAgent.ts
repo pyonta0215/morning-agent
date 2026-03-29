@@ -30,7 +30,19 @@ export class WebAgent implements Agent {
     const startTime = Date.now();
     const dateStr = input.date.toISOString().split('T')[0]; // YYYY-MM-DD
 
+    // Google News の after: フィルターは「その日より後」として扱われることがあるため
+    // 昨日の日付を使って今日の記事が確実に収集されるようにする
+    const yesterday = new Date(input.date);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+    // 集約時の除外基準: 2日より前の記事は除外
+    const twoDaysAgo = new Date(input.date);
+    twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+    const twoDaysAgoStr = twoDaysAgo.toISOString().split('T')[0];
+
     // 静的URLに加えて、各トピックのキーワードでGoogle News RSSを検索
+    // keywords が空のトピック（arXiv等）はGoogle News検索をスキップ
     const allUrls = input.config.topics.flatMap((topic) => {
       const staticUrls = topic.urls.map((url) => ({
         url,
@@ -38,8 +50,12 @@ export class WebAgent implements Agent {
         topicLabel: topic.label,
       }));
 
+      if (topic.keywords.length === 0) {
+        return staticUrls;
+      }
+
       const query = encodeURIComponent(
-        `${topic.keywords.join(' OR ')} after:${dateStr}`
+        `${topic.keywords.join(' OR ')} after:${yesterdayStr}`
       );
       const newsSearchUrl = {
         url: `https://news.google.com/rss/search?q=${query}&hl=ja&gl=JP&ceid=JP:ja`,
@@ -117,8 +133,8 @@ ${urlList}
         ...messages,
         {
           role: 'user',
-          content: `収集した情報をもとに、${dateStr} の記事を中心に、テーマ別に重要度スコア（1-5）付きで3〜5件に絞り込んでください。
-日付が古い記事（${dateStr} より前）はスコアを低くしてください。
+          content: `収集した情報をもとに、テーマ別に重要度スコア（1-5）付きで3〜5件に絞り込んでください。
+【重要】${twoDaysAgoStr} より前に公開された記事は出力に含めないでください。日付が明示されていない記事は最新記事として扱ってください。
 
 出力形式（JSON）:
 {
