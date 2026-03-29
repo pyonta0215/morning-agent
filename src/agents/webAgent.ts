@@ -28,7 +28,7 @@ export class WebAgent implements Agent {
 
   async run(input: AgentInput): Promise<AgentOutput> {
     const startTime = Date.now();
-    const dateStr = input.date.toISOString().split('T')[0]; // YYYY-MM-DD
+    const dateStr = input.date.toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' }); // YYYY-MM-DD (JST)
 
     // Google News の after: フィルターは「その日より後」として扱われることがあるため
     // 昨日の日付を使って今日の記事が確実に収集されるようにする
