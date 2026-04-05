@@ -38,7 +38,7 @@ function isRss(body: string): boolean {
 }
 
 /** RSS/Atom の <item> / <entry> を構造化テキストに変換 */
-function parseRss(body: string, maxItems = 20): string {
+function parseRss(body: string, maxItems = 10): string {
   // <item>...</item> または <entry>...</entry> を抽出
   const itemPattern = /<(?:item|entry)[\s>]([\s\S]*?)<\/(?:item|entry)>/gi;
   const items: string[] = [];
@@ -112,7 +112,7 @@ export async function handleWebFetch(input: FetchInput): Promise<FetchResult> {
 
     // RSS/Atom なら記事リストとして返す
     if (isRss(body)) {
-      const text = parseRss(body).slice(0, maxLength * 3); // RSS は情報量が多いので制限を緩く
+      const text = parseRss(body).slice(0, maxLength);
       console.log(`[webFetch] rss ok: ${url} (${text.length} chars)`);
       return { url, text };
     }

@@ -1,7 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
-import type { MessageParam, ToolResultBlockParam } from '@anthropic-ai/sdk/resources/messages.js';
 import { type Agent, type AgentInput, type AgentOutput } from './base.js';
-import { webFetchToolDefinition, handleWebFetch } from '../tools/webFetchTool.js';
+import { handleWebFetch } from '../tools/webFetchTool.js';
 import { logLlm, calcCost } from '../utils/llmLogger.js';
 
 const MODEL = 'claude-haiku-4-5-20251001';
@@ -30,19 +29,15 @@ export class WebAgent implements Agent {
     const startTime = Date.now();
     const dateStr = input.date.toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' }); // YYYY-MM-DD (JST)
 
-    // Google News の after: フィルターは「その日より後」として扱われることがあるため
-    // 昨日の日付を使って今日の記事が確実に収集されるようにする
     const yesterday = new Date(input.date);
     yesterday.setDate(yesterday.getDate() - 1);
     const yesterdayStr = yesterday.toISOString().split('T')[0];
 
-    // 集約時の除外基準: 2日より前の記事は除外
     const twoDaysAgo = new Date(input.date);
     twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
     const twoDaysAgoStr = twoDaysAgo.toISOString().split('T')[0];
 
     // 静的URLに加えて、各トピックのキーワードでGoogle News RSSを検索
-    // keywords が空のトピック（arXiv等）はGoogle News検索をスキップ
     const allUrls = input.config.topics.flatMap((topic) => {
       const staticUrls = topic.urls.map((url) => ({
         url,
@@ -66,75 +61,32 @@ export class WebAgent implements Agent {
       return [...staticUrls, newsSearchUrl];
     });
 
-    const urlList = allUrls.map((u) => `- ${u.url} (トピック: ${u.topicLabel})`).join('\n');
+    // LLMツールループを使わずにコードで並列フェッチ
+    const fetchResults = await Promise.all(
+      allUrls.map(async (u) => {
+        const result = await handleWebFetch({ url: u.url, maxLength: 2000 });
+        return { ...u, content: result.text ?? result.error ?? '（取得失敗）' };
+      })
+    );
 
-    const messages: MessageParam[] = [
-      {
-        role: 'user',
-        content: `今日は ${dateStr} です。以下のURLから本日のニュース・情報を収集してください。
-Google News RSS の結果は今日以降の記事のみ対象とし、古い情報は除外してください。
+    const fetchedContent = fetchResults
+      .map((r) => `=== ${r.topicLabel} (${r.url}) ===\n${r.content}`)
+      .join('\n\n');
 
-収集するURL一覧:
-${urlList}
-
-各URLについてfetch_webpageツールを使って内容を取得してください。`,
-      },
-    ];
-
-    let totalInputTokens = 0;
-    let totalOutputTokens = 0;
-
-    // tool_use ループ
-    while (true) {
-      const response = await this.client.messages.create({
-        model: MODEL,
-        max_tokens: 4096,
-        tools: [webFetchToolDefinition],
-        messages,
-      });
-
-      totalInputTokens += response.usage.input_tokens;
-      totalOutputTokens += response.usage.output_tokens;
-
-      if (response.stop_reason !== 'tool_use') {
-        // 収集完了 → 結果をメッセージに追加して集約を依頼
-        messages.push({ role: 'assistant', content: response.content });
-        break;
-      }
-
-      // ツール呼び出し処理
-      messages.push({ role: 'assistant', content: response.content });
-
-      const toolResults: ToolResultBlockParam[] = [];
-      for (const block of response.content) {
-        if (block.type !== 'tool_use') continue;
-
-        if (block.name === 'fetch_webpage') {
-          const fetchInput = block.input as { url: string; maxLength?: number };
-          const result = await handleWebFetch(fetchInput);
-          toolResults.push({
-            type: 'tool_result',
-            tool_use_id: block.id,
-            content: JSON.stringify(result),
-          });
-        }
-      }
-
-      messages.push({ role: 'user', content: toolResults });
-    }
-
-    // 集約: JSON形式でWebItemを出力させる
+    // 集約: JSON形式でWebItemを出力させる（1回のみ）
     const summaryResponse = await this.client.messages.create({
       model: MODEL,
-      max_tokens: 8096,
+      max_tokens: 4096,
       system:
         'あなたはニュース編集者です。収集した情報を重要度でフィルタリングし、JSON形式で出力してください。',
       messages: [
-        ...messages,
         {
           role: 'user',
-          content: `収集した情報をもとに、テーマ別に重要度スコア（1-5）付きで3〜5件に絞り込んでください。
+          content: `今日は ${dateStr} です。以下の各URLから収集した内容をもとに、テーマ別に重要度スコア（1-5）付きで3〜5件に絞り込んでください。
 【重要】${twoDaysAgoStr} より前に公開された記事は出力に含めないでください。日付が明示されていない記事は最新記事として扱ってください。
+
+収集データ:
+${fetchedContent}
 
 出力形式（JSON）:
 {
@@ -154,21 +106,17 @@ ${urlList}
       ],
     });
 
-    totalInputTokens += summaryResponse.usage.input_tokens;
-    totalOutputTokens += summaryResponse.usage.output_tokens;
-
+    const inputTokens = summaryResponse.usage.input_tokens;
+    const outputTokens = summaryResponse.usage.output_tokens;
     const durationMs = Date.now() - startTime;
-    const costUsd = calcCost(
-      { input_tokens: totalInputTokens, output_tokens: totalOutputTokens },
-      MODEL
-    );
+    const costUsd = calcCost({ input_tokens: inputTokens, output_tokens: outputTokens }, MODEL);
 
     logLlm({
       traceId: process.env.AWS_LAMBDA_REQUEST_ID ?? 'local',
       agentId: this.id,
       model: MODEL,
-      inputTokens: totalInputTokens,
-      outputTokens: totalOutputTokens,
+      inputTokens,
+      outputTokens,
       costUsd,
       durationMs,
       success: true,
@@ -179,7 +127,6 @@ ${urlList}
     if (textBlock && textBlock.type === 'text') {
       console.log('[WebAgent] summary raw response:\n', textBlock.text);
       try {
-        // ```json ... ``` ブロックと裸の { ... } の両方に対応
         const jsonMatch =
           textBlock.text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/) ??
           textBlock.text.match(/(\{[\s\S]*\})/);
@@ -201,7 +148,7 @@ ${urlList}
     return {
       agentId: this.id,
       data,
-      tokensUsed: totalInputTokens + totalOutputTokens,
+      tokensUsed: inputTokens + outputTokens,
       durationMs,
     };
   }
