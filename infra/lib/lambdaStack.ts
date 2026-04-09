@@ -16,8 +16,14 @@ export class MorningAgentLambdaStack extends cdk.Stack {
       autoDeleteObjects: true,
       lifecycleRules: [
         {
-          // 送信漏れで残ったオブジェクトを1日後に自動削除
+          // メール中間データ: 送信漏れで残ったオブジェクトを1日後に自動削除
+          prefix: 'pending/',
           expiration: cdk.Duration.days(1),
+        },
+        {
+          // 編集コンテキスト: 前日コンテキストを翌朝まで保持するため2日間保存
+          prefix: 'context/',
+          expiration: cdk.Duration.days(2),
         },
       ],
     });

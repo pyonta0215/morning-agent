@@ -11,6 +11,7 @@ import {
   saveEditorialContext,
   loadEditorialContext,
   buildEditorialContext,
+  getJSTIsoDate,
 } from './utils/editorialContext.js';
 
 const S3_KEY_MORNING = 'pending/morning-email.json';
@@ -71,10 +72,25 @@ async function runCollectPhaseFor(
   const s3 = getS3Client(config.awsRegion);
   const enhancedEditorial = process.env.ENHANCED_EDITORIAL === 'true';
 
-  // 夕刊は朝刊のコンテキストを引き継ぐ（ENHANCED_EDITORIAL=true 時）
+  const now = new Date();
+  const todayIso = getJSTIsoDate(now);
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayIso = getJSTIsoDate(yesterday);
+
+  // 前回配信コンテキストを取得（ENHANCED_EDITORIAL=true 時）
+  // 夕刊: 同日朝刊 / 朝刊: 前日夕刊（なければ前日朝刊）
   let previousContext = null;
-  if (enhancedEditorial && edition === 'evening') {
-    previousContext = await loadEditorialContext(s3, bucket, 'morning');
+  if (enhancedEditorial) {
+    if (edition === 'evening') {
+      previousContext = await loadEditorialContext(s3, bucket, 'morning', todayIso);
+    } else {
+      // 前日夕刊を優先、なければ前日朝刊
+      previousContext = await loadEditorialContext(s3, bucket, 'evening', yesterdayIso);
+      if (!previousContext) {
+        previousContext = await loadEditorialContext(s3, bucket, 'morning', yesterdayIso);
+      }
+    }
   }
 
   const pipeline = new Pipeline();
@@ -113,7 +129,7 @@ async function runCollectPhaseFor(
     const webResult = results.find((r) => r.agentId === 'web');
     const webData = webResult?.data as WebAgentData | undefined;
     if (webData) {
-      const ctx = buildEditorialContext(edition, dateStr, data.picks, webData.byTopic);
+      const ctx = buildEditorialContext(edition, dateStr, todayIso, data.picks, webData.byTopic);
       await saveEditorialContext(s3, bucket, ctx);
     }
   }

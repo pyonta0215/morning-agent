@@ -32,16 +32,26 @@ export class ComposerAgent implements Agent {
 
     const allItems = Object.values(webData?.byTopic ?? {}).flat();
 
-    // 前回コンテキストがある場合の継続性プロンプトを構築
+    // 前回コンテキストがある場合の継続性プロンプトを構築（朝刊/夕刊で方針を変える）
     const prevContextSection = this.previousContext
-      ? `
-【前回の朝刊で取り上げた注目記事】
+      ? this.edition === 'evening'
+        ? `
+【今朝の朝刊で取り上げた注目記事】
 ${this.previousContext.picks.map((p) => `・${p.title}：${p.comment}`).join('\n')}
 
 夕刊では以下の方針で選んでください：
 - 朝刊から進展があったトピックは積極的に取り上げ、変化を補足してください
 - 朝刊と同じ記事の重複選出は避けてください
 - 朝刊が扱っていない視点や新しいトピックも1件含めてください
+`
+        : `
+【昨日の配信で取り上げた注目記事（${this.previousContext.date}）】
+${this.previousContext.picks.map((p) => `・${p.title}：${p.comment}`).join('\n')}
+
+今日の朝刊では以下の方針で選んでください：
+- 昨日から引き続き重要なトピックは「続報：」を冒頭につけて進展を補足してください
+- 昨日と全く同じ記事は選ばないでください
+- 新規トピックを優先しつつ、継続トピックは進展があれば取り上げてください
 `
       : '';
 
