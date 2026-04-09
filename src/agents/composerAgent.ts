@@ -3,6 +3,7 @@ import type { SesClient } from '../clients/sesClient.js';
 import { type Agent, type AgentInput, type AgentOutput, type AppConfig } from './base.js';
 import { logLlm, calcCost } from '../utils/llmLogger.js';
 import type { WebAgentData, WebItem } from './webAgent.js';
+import type { EditorialContext } from '../utils/editorialContext.js';
 
 const MODEL = 'claude-haiku-4-5-20251001';
 
@@ -16,7 +17,9 @@ export class ComposerAgent implements Agent {
     private dryRun: boolean = false,
     /** trueのとき: メール送信せずsubject/htmlBody/textBodyをdataに返す */
     private buildOnly: boolean = false,
-    private edition: 'morning' | 'evening' = 'morning'
+    private edition: 'morning' | 'evening' = 'morning',
+    /** 前回配信のコンテキスト（朝刊→夕刊の継続性に使用） */
+    private previousContext: EditorialContext | null = null
   ) {
     this.client = new Anthropic();
   }
@@ -29,6 +32,19 @@ export class ComposerAgent implements Agent {
 
     const allItems = Object.values(webData?.byTopic ?? {}).flat();
 
+    // 前回コンテキストがある場合の継続性プロンプトを構築
+    const prevContextSection = this.previousContext
+      ? `
+【前回の朝刊で取り上げた注目記事】
+${this.previousContext.picks.map((p) => `・${p.title}：${p.comment}`).join('\n')}
+
+夕刊では以下の方針で選んでください：
+- 朝刊から進展があったトピックは積極的に取り上げ、変化を補足してください
+- 朝刊と同じ記事の重複選出は避けてください
+- 朝刊が扱っていない視点や新しいトピックも1件含めてください
+`
+      : '';
+
     // Claude には「注目トピック」の editorial コメントだけ生成させる
     const response = await this.client.messages.create({
       model: MODEL,
@@ -39,7 +55,7 @@ export class ComposerAgent implements Agent {
           role: 'user',
           content: `以下の記事一覧から、今日（${dateStr}）特に注目すべき記事を3件選んで、
 それぞれ1〜2文のコメントを添えてください。
-
+${prevContextSection}
 記事一覧:
 ${allItems.map((item) => `- [${item.topic}] ${item.title} (score:${item.score})`).join('\n')}
 
@@ -96,7 +112,7 @@ ${allItems.map((item) => `- [${item.topic}] ${item.title} (score:${item.score})`
       console.log('[ComposerAgent] buildOnly: returning email content without sending');
       return {
         agentId: this.id,
-        data: { subject, htmlBody, textBody, topicsCount: allItems.length },
+        data: { subject, htmlBody, textBody, topicsCount: allItems.length, picks },
         tokensUsed: inputTokens + outputTokens,
         durationMs,
       };

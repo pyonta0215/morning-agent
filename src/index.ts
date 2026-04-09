@@ -4,8 +4,14 @@ import { loadConfig, setTraceId } from './config/settings.js';
 import { SesClient } from './clients/sesClient.js';
 import { Pipeline } from './orchestrator/pipeline.js';
 import { WebAgent } from './agents/webAgent.js';
+import type { WebAgentData } from './agents/webAgent.js';
 import { ComposerAgent, formatDateJST } from './agents/composerAgent.js';
 import type { AgentInput } from './agents/base.js';
+import {
+  saveEditorialContext,
+  loadEditorialContext,
+  buildEditorialContext,
+} from './utils/editorialContext.js';
 
 const S3_KEY_MORNING = 'pending/morning-email.json';
 const S3_KEY_EVENING = 'pending/evening-email.json';
@@ -63,16 +69,32 @@ async function runCollectPhaseFor(
   const sesClient = new SesClient(config.sesRegion);
   const dryRun = process.env.DRY_RUN === 'true';
   const s3 = getS3Client(config.awsRegion);
+  const enhancedEditorial = process.env.ENHANCED_EDITORIAL === 'true';
+
+  // 夕刊は朝刊のコンテキストを引き継ぐ（ENHANCED_EDITORIAL=true 時）
+  let previousContext = null;
+  if (enhancedEditorial && edition === 'evening') {
+    previousContext = await loadEditorialContext(s3, bucket, 'morning');
+  }
 
   const pipeline = new Pipeline();
   pipeline.register(new WebAgent(), 'collect');
-  pipeline.register(new ComposerAgent(sesClient, config, dryRun, /* buildOnly */ true, edition), 'compose');
+  pipeline.register(
+    new ComposerAgent(sesClient, config, dryRun, /* buildOnly */ true, edition, previousContext),
+    'compose'
+  );
 
   const input: AgentInput = { date: new Date(), config };
   const results = await pipeline.run(input);
 
   const composerResult = results.find((r) => r.agentId === 'composer');
-  const data = composerResult?.data as { subject?: string; htmlBody?: string; textBody?: string; topicsCount?: number } | undefined;
+  const data = composerResult?.data as {
+    subject?: string;
+    htmlBody?: string;
+    textBody?: string;
+    topicsCount?: number;
+    picks?: Array<{ title: string; comment: string }>;
+  } | undefined;
 
   if (!data?.subject || !data?.htmlBody || !data?.textBody) {
     throw new Error('[index] ComposerAgent did not return expected email content');
@@ -86,12 +108,24 @@ async function runCollectPhaseFor(
     textBody: data.textBody,
   });
 
+  // 編集コンテキストを保存（次の版で使用）
+  if (enhancedEditorial && data.picks && data.picks.length > 0) {
+    const webResult = results.find((r) => r.agentId === 'web');
+    const webData = webResult?.data as WebAgentData | undefined;
+    if (webData) {
+      const ctx = buildEditorialContext(edition, dateStr, data.picks, webData.byTopic);
+      await saveEditorialContext(s3, bucket, ctx);
+    }
+  }
+
   console.log(
     JSON.stringify({
       type: 'COLLECT_PHASE_SUCCESS',
       traceId,
       edition,
       topicsCount: data.topicsCount,
+      enhancedEditorial,
+      hasPreviousContext: previousContext !== null,
       agentResults: results.map((r) => ({
         agentId: r.agentId,
         tokensUsed: r.tokensUsed,

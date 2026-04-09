@@ -106,6 +106,28 @@ npx cdk bootstrap aws://ACCOUNT_ID/ap-northeast-1
 - SES: `us-east-1` (バージニア) — 送信元ドメインをこのリージョンで Verify する
 - Lambda の環境変数 `SES_REGION=us-east-1` で自動切り替え
 
+## Enhanced Editorial（朝刊→夕刊の継続性）
+
+`ENHANCED_EDITORIAL=true` を設定すると、朝刊で選んだ注目記事を夕刊の編集プロンプトに注入します。
+
+**効果**: 夕刊が朝刊の内容を踏まえた選出・コメントになる（重複回避・続報補足）
+
+**有効化**:
+```bash
+# ローカル: .env に追記
+ENHANCED_EDITORIAL=true
+
+# Lambda 本番環境:
+aws lambda update-function-configuration \
+  --function-name MorningAgentFunction \
+  --environment Variables="{ENHANCED_EDITORIAL=true,...}"
+```
+
+**仕組み**: 朝刊収集時に `context/morning.json` を S3 に保存。夕刊収集時に読み込んでプロンプトに注入。
+S3 ロード失敗時は従来通りの動作にフォールバックします。
+
+設計の詳細と Managed Agents 評価については [`docs/managed-agents-evaluation.md`](docs/managed-agents-evaluation.md) を参照。
+
 ## ローカルテスト コマンド一覧
 
 | コマンド | 内容 |
