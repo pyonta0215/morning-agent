@@ -25,3 +25,11 @@ topics:
       - https://rss.arxiv.org/rss/cs.CL
       - https://rss.arxiv.org/rss/cs.AI
 
+  - id: jp_politics
+    label: 政治・行政
+    keywords: [政治, 政策, 内閣, 官邸, 法案, 省庁, デジタル庁]
+    urls:
+      - https://www3.nhk.or.jp/rss/news/cat4.xml
+      - https://www.kantei.go.jp/index-jnews.rdf
+      - https://www.digital.go.jp/rss/news.xml
+
