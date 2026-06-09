@@ -54,34 +54,7 @@ export class MorningAgentSchedulerStack extends cdk.Stack {
       state: 'ENABLED',
     });
 
-    // 夕刊収集フェーズ: 17:45 JST (08:45 UTC) — ニュース収集・LLM統合・S3保存
-    new scheduler.CfnSchedule(this, 'EveningCollectSchedule', {
-      name: 'morning-agent-evening-collect',
-      description: '夕刊エージェント便 収集フェーズ 毎夕17:45 JST (UTC 08:45) に実行',
-      scheduleExpression: 'cron(45 8 * * ? *)',
-      scheduleExpressionTimezone: 'UTC',
-      flexibleTimeWindow: { mode: 'OFF' },
-      target: {
-        arn: props.lambdaFunction.functionArn,
-        roleArn: schedulerRole.roleArn,
-        input: JSON.stringify({ source: 'scheduler', phase: 'evening-collect' }),
-      },
-      state: 'ENABLED',
-    });
-
-    // 夕刊送信フェーズ: 18:00 JST (09:00 UTC) — S3から読み出してメール送信
-    new scheduler.CfnSchedule(this, 'EveningSendSchedule', {
-      name: 'morning-agent-evening-send',
-      description: '夕刊エージェント便 送信フェーズ 毎夕18:00 JST (UTC 09:00) に実行',
-      scheduleExpression: 'cron(0 9 * * ? *)',
-      scheduleExpressionTimezone: 'UTC',
-      flexibleTimeWindow: { mode: 'OFF' },
-      target: {
-        arn: props.lambdaFunction.functionArn,
-        roleArn: schedulerRole.roleArn,
-        input: JSON.stringify({ source: 'scheduler', phase: 'evening-send' }),
-      },
-      state: 'ENABLED',
-    });
+    // 夕刊（evening-collect / evening-send）は廃止し、朝刊のみの配信に変更。
+    // 夕刊のアプリコード（index.ts の evening phase ハンドラ）は手動実行用に温存。
   }
 }

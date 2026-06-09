@@ -3,6 +3,8 @@ export interface Topic {
   label: string;
   urls: string[];
   keywords: string[];
+  /** true のトピックのみ web_search による鮮度補強を行う */
+  webSearch?: boolean;
 }
 
 export interface AppConfig {
