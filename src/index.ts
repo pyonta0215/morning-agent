@@ -13,6 +13,12 @@ import {
   buildEditorialContext,
   getJSTIsoDate,
 } from './utils/editorialContext.js';
+import {
+  loadDeliveredHistory,
+  saveDeliveredHistory,
+  updateDeliveredHistory,
+  type DeliveredItem,
+} from './utils/deliveredHistory.js';
 
 const S3_KEY_MORNING = 'pending/morning-email.json';
 const S3_KEY_EVENING = 'pending/evening-email.json';
@@ -93,6 +99,9 @@ async function runCollectPhaseFor(
     }
   }
 
+  // 配信済み記事履歴（重複掲載の抑制に使用）
+  const deliveredHistory = await loadDeliveredHistory(s3, bucket);
+
   const pipeline = new Pipeline();
   pipeline.register(new WebAgent(), 'collect');
   pipeline.register(
@@ -100,7 +109,7 @@ async function runCollectPhaseFor(
     'compose'
   );
 
-  const input: AgentInput = { date: new Date(), config };
+  const input: AgentInput = { date: new Date(), config, delivered: deliveredHistory };
   const results = await pipeline.run(input);
 
   const composerResult = results.find((r) => r.agentId === 'composer');
@@ -124,14 +133,25 @@ async function runCollectPhaseFor(
     textBody: data.textBody,
   });
 
+  const webResult = results.find((r) => r.agentId === 'web');
+  const webData = webResult?.data as WebAgentData | undefined;
+
+  // 本日掲載分を配信済み履歴に追加（保持期間外は削除）
+  if (webData) {
+    const newItems: DeliveredItem[] = Object.entries(webData.byTopic).flatMap(([topic, items]) =>
+      items.map((i) => ({ url: i.url, title: i.title, topic, isoDate: todayIso }))
+    );
+    await saveDeliveredHistory(
+      s3,
+      bucket,
+      updateDeliveredHistory(deliveredHistory, newItems, todayIso)
+    );
+  }
+
   // 編集コンテキストを保存（次の版で使用）
-  if (enhancedEditorial && data.picks && data.picks.length > 0) {
-    const webResult = results.find((r) => r.agentId === 'web');
-    const webData = webResult?.data as WebAgentData | undefined;
-    if (webData) {
-      const ctx = buildEditorialContext(edition, dateStr, todayIso, data.picks, webData.byTopic);
-      await saveEditorialContext(s3, bucket, ctx);
-    }
+  if (enhancedEditorial && data.picks && data.picks.length > 0 && webData) {
+    const ctx = buildEditorialContext(edition, dateStr, todayIso, data.picks, webData.byTopic);
+    await saveEditorialContext(s3, bucket, ctx);
   }
 
   console.log(

@@ -7,6 +7,30 @@ import type { EditorialContext } from '../utils/editorialContext.js';
 
 const MODEL = 'claude-haiku-4-5-20251001';
 
+/** picks 呼び出し用の JSON スキーマ（structured outputs） */
+const PICKS_FORMAT: Anthropic.JSONOutputFormat = {
+  type: 'json_schema',
+  schema: {
+    type: 'object',
+    properties: {
+      picks: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            title: { type: 'string' },
+            comment: { type: 'string', description: '注目理由や要点（1〜2文）' },
+          },
+          required: ['title', 'comment'],
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ['picks'],
+    additionalProperties: false,
+  },
+};
+
 export class ComposerAgent implements Agent {
   readonly id = 'composer';
   private client: Anthropic;
@@ -60,21 +84,15 @@ ${this.previousContext.picks.map((p) => `・${p.title}：${p.comment}`).join('\n
       model: MODEL,
       max_tokens: 1024,
       system: 'あなたは朝刊エージェント便の編集長です。簡潔・実用的な日本語で出力してください。',
+      output_config: { format: PICKS_FORMAT },
       messages: [
         {
           role: 'user',
           content: `以下の記事一覧から、今日（${dateStr}）特に注目すべき記事を3件選んで、
-それぞれ1〜2文のコメントを添えてください。
+それぞれ注目理由や要点のコメントを1〜2文で添えてください。
 ${prevContextSection}
 記事一覧:
-${allItems.map((item) => `- [${item.topic}] ${item.title} (score:${item.score})`).join('\n')}
-
-出力形式（JSON）:
-{
-  "picks": [
-    { "title": "記事タイトル", "comment": "注目理由や要点を1〜2文で" }
-  ]
-}`,
+${allItems.map((item) => `- [${item.topic}] ${item.title} (score:${item.score})`).join('\n')}`,
         },
       ],
     });
@@ -99,15 +117,9 @@ ${allItems.map((item) => `- [${item.topic}] ${item.title} (score:${item.score})`
     const textBlock = response.content.find((c) => c.type === 'text');
     if (textBlock && textBlock.type === 'text') {
       try {
-        const jsonMatch =
-          textBlock.text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/) ??
-          textBlock.text.match(/(\{[\s\S]*\})/);
-        if (jsonMatch) {
-          const parsed = JSON.parse(jsonMatch[1] ?? jsonMatch[0]) as {
-            picks: typeof picks;
-          };
-          picks = parsed.picks ?? [];
-        }
+        // structured outputs によりスキーマ準拠のJSONが保証される
+        const parsed = JSON.parse(textBlock.text) as { picks: typeof picks };
+        picks = parsed.picks ?? [];
       } catch {
         console.warn('[ComposerAgent] Failed to parse picks response');
       }

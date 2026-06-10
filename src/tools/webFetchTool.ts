@@ -1,5 +1,6 @@
 import axios from 'axios';
 import type { Tool } from '@anthropic-ai/sdk/resources/messages.js';
+import { normalizeUrl } from '../utils/deliveredHistory.js';
 
 export const webFetchToolDefinition: Tool = {
   name: 'fetch_webpage',
@@ -23,6 +24,10 @@ export const webFetchToolDefinition: Tool = {
 interface FetchInput {
   url: string;
   maxLength?: number;
+  /** RSS/Atom: この日時より古い記事を除外する（日付不明の記事は残す） */
+  sinceDate?: Date;
+  /** RSS/Atom: 除外するURL集合（normalizeUrl で正規化済みであること） */
+  excludeUrls?: Set<string>;
 }
 
 interface FetchResult {
@@ -37,11 +42,20 @@ function isRss(body: string): boolean {
   return /<rss|<feed|<channel/i.test(head);
 }
 
+interface ParseRssOptions {
+  maxItems?: number;
+  sinceDate?: Date;
+  excludeUrls?: Set<string>;
+}
+
 /** RSS/Atom の <item> / <entry> を構造化テキストに変換 */
-function parseRss(body: string, maxItems = 10): string {
+function parseRss(body: string, options: ParseRssOptions = {}): string {
+  const { maxItems = 10, sinceDate, excludeUrls } = options;
   // <item>...</item> または <entry>...</entry> を抽出
   const itemPattern = /<(?:item|entry)[\s>]([\s\S]*?)<\/(?:item|entry)>/gi;
   const items: string[] = [];
+  let skippedOld = 0;
+  let skippedDelivered = 0;
 
   let match: RegExpExecArray | null;
   while ((match = itemPattern.exec(body)) !== null && items.length < maxItems) {
@@ -62,6 +76,21 @@ function parseRss(body: string, maxItems = 10): string {
 
     if (!title && !link) continue;
 
+    // 古い記事をコード側で除外（日付がパースできない記事は最新扱いで残す）
+    if (sinceDate && pubDate) {
+      const parsed = new Date(pubDate);
+      if (!Number.isNaN(parsed.getTime()) && parsed < sinceDate) {
+        skippedOld++;
+        continue;
+      }
+    }
+
+    // 配信済みURLを除外
+    if (excludeUrls && link && excludeUrls.has(normalizeUrl(link))) {
+      skippedDelivered++;
+      continue;
+    }
+
     items.push(
       [
         `タイトル: ${title}`,
@@ -74,9 +103,13 @@ function parseRss(body: string, maxItems = 10): string {
     );
   }
 
+  if (skippedOld > 0 || skippedDelivered > 0) {
+    console.log(`[webFetch] rss filtered: ${skippedOld} old, ${skippedDelivered} delivered`);
+  }
+
   return items.length > 0
     ? items.map((item, i) => `[記事${i + 1}]\n${item}`).join('\n\n')
-    : '（記事が見つかりませんでした）';
+    : '（新着記事はありませんでした）';
 }
 
 function extractTag(block: string, tag: string): string {
@@ -96,7 +129,7 @@ function stripTags(str: string): string {
 }
 
 export async function handleWebFetch(input: FetchInput): Promise<FetchResult> {
-  const { url, maxLength = 3000 } = input;
+  const { url, maxLength = 3000, sinceDate, excludeUrls } = input;
   console.log(`[webFetch] fetching: ${url}`);
 
   try {
@@ -112,7 +145,7 @@ export async function handleWebFetch(input: FetchInput): Promise<FetchResult> {
 
     // RSS/Atom なら記事リストとして返す
     if (isRss(body)) {
-      const text = parseRss(body).slice(0, maxLength);
+      const text = parseRss(body, { sinceDate, excludeUrls }).slice(0, maxLength);
       console.log(`[webFetch] rss ok: ${url} (${text.length} chars)`);
       return { url, text };
     }

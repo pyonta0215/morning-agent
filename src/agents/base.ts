@@ -1,3 +1,5 @@
+import type { DeliveredItem } from '../utils/deliveredHistory.js';
+
 export interface Topic {
   id: string;
   label: string;
@@ -19,6 +21,8 @@ export interface AgentInput {
   date: Date;
   config: AppConfig;
   context?: AgentOutput[];
+  /** 過去に紙面掲載済みの記事履歴（重複掲載の抑制に使用） */
+  delivered?: DeliveredItem[];
 }
 
 export interface AgentOutput {
