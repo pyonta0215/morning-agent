@@ -222,6 +222,51 @@ ${sourcesText}`,
 
 // ---- レポート -----------------------------------------------------
 
+interface OriginStats {
+  fetchItems: number;
+  searchItems: number;
+  /** origin 情報のない記事数（origin導入前の旧アーカイブ） */
+  unknownItems: number;
+  fetchAvgScore: number | null;
+  searchAvgScore: number | null;
+  /** picks のうち web_search 由来記事とタイトル一致した数 */
+  searchPicks: number;
+  /** タイトル一致で由来を特定できた picks 数 */
+  matchedPicks: number;
+  totalPicks: number;
+}
+
+/** picks をタイトル類似で byTopic の記事に紐付け、origin 別の寄与を集計する */
+function computeOriginStats(archive: RunArchive): OriginStats {
+  const items = Object.values(archive.byTopic).flat();
+  const fetch = items.filter((i) => i.origin === 'fetch');
+  const search = items.filter((i) => i.origin === 'web_search');
+  const avg = (xs: number[]): number | null =>
+    xs.length > 0 ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
+
+  let searchPicks = 0;
+  let matchedPicks = 0;
+  for (const pick of archive.picks) {
+    const matched = items.find(
+      (i) => i.title === pick.title || titleSimilarity(i.title, pick.title) >= TITLE_SIM_THRESHOLD
+    );
+    if (!matched?.origin) continue;
+    matchedPicks++;
+    if (matched.origin === 'web_search') searchPicks++;
+  }
+
+  return {
+    fetchItems: fetch.length,
+    searchItems: search.length,
+    unknownItems: items.length - fetch.length - search.length,
+    fetchAvgScore: avg(fetch.map((i) => i.score)),
+    searchAvgScore: avg(search.map((i) => i.score)),
+    searchPicks,
+    matchedPicks,
+    totalPicks: archive.picks.length,
+  };
+}
+
 interface RunReport {
   isoDate: string;
   edition: string;
@@ -232,6 +277,7 @@ interface RunReport {
   fidelityPass: number | null;
   fidelityCoverage: number | null;
   verdicts: JudgeVerdict[];
+  originStats: OriginStats;
 }
 
 function pct(v: number | null): string {
@@ -304,6 +350,7 @@ async function main() {
       fidelityPass,
       fidelityCoverage,
       verdicts,
+      originStats: computeOriginStats(archive),
     });
 
     // 次の配信の重複判定用に蓄積
@@ -339,6 +386,33 @@ async function main() {
     );
     const judgeCost = (judgeInputTokens / 1e6) * 1 + (judgeOutputTokens / 1e6) * 5;
     console.log(`- judge コスト: $${judgeCost.toFixed(4)}（入力 ${judgeInputTokens} / 出力 ${judgeOutputTokens} トークン）`);
+  }
+
+  // web_search 寄与（origin 情報のあるアーカイブのみ）
+  const withOrigin = reports.filter((r) => r.originStats.fetchItems + r.originStats.searchItems > 0);
+  if (withOrigin.length > 0) {
+    console.log('\n## web_search 寄与\n');
+    console.log('| 配信日 | 検索由来/全体 | 平均スコア(fetch) | 平均スコア(search) | picks中の検索由来 |');
+    console.log('|---|---|---|---|---|');
+    for (const r of withOrigin) {
+      const o = r.originStats;
+      console.log(
+        `| ${r.isoDate} | ${o.searchItems}/${r.items} | ${o.fetchAvgScore?.toFixed(1) ?? '—'} | ${o.searchAvgScore?.toFixed(1) ?? '—'} | ${o.searchPicks}/${o.matchedPicks}${o.matchedPicks < o.totalPicks ? `（不明${o.totalPicks - o.matchedPicks}）` : ''} |`
+      );
+    }
+    const oAll = withOrigin.map((r) => r.originStats);
+    const sumSearch = oAll.reduce((s, o) => s + o.searchItems, 0);
+    const sumItems = withOrigin.reduce((s, r) => s + r.items, 0);
+    const sumSearchPicks = oAll.reduce((s, o) => s + o.searchPicks, 0);
+    const sumMatched = oAll.reduce((s, o) => s + o.matchedPicks, 0);
+    console.log(
+      `\n- 紙面に占める検索由来: ${((sumSearch / sumItems) * 100).toFixed(1)}%（${sumSearch}/${sumItems}）`
+    );
+    if (sumMatched > 0) {
+      console.log(
+        `- picks に占める検索由来: ${((sumSearchPicks / sumMatched) * 100).toFixed(1)}%（${sumSearchPicks}/${sumMatched}）— 紙面シェアを上回っていれば「検索由来は編集長に選ばれやすい」と言える`
+      );
+    }
   }
 
   // 問題のあった項目の詳細

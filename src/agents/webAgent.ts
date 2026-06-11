@@ -20,6 +20,8 @@ export interface WebItem {
   summary: string;
   score: number;
   topic: string;
+  /** 記事の取得経路（web_search寄与の計測用）。旧データには無い */
+  origin?: 'fetch' | 'web_search';
 }
 
 export interface WebAgentData {
@@ -153,7 +155,7 @@ ${fetchedContent}`,
         // structured outputs によりスキーマ準拠のJSONが保証される
         const parsed = JSON.parse(textBlock.text) as { items: SummaryItem[] };
         for (const item of parsed.items) {
-          (data.byTopic[item.topic] ??= []).push({ ...item });
+          (data.byTopic[item.topic] ??= []).push({ ...item, origin: 'fetch' });
         }
         const topicCount = Object.keys(data.byTopic).length;
         console.log(`[WebAgent] parsed: ${topicCount} topics, ${parsed.items.length} items`);
@@ -356,6 +358,7 @@ ${deliveredTitles.map((t) => `  ・${t}`).join('\n')}`
         summary: it.summary ?? '',
         score: typeof it.score === 'number' ? it.score : 3,
         topic: topic.id,
+        origin: 'web_search' as const,
       }));
 
     console.log(`[WebAgent] searchTopic ${topic.id}: parsed ${items.length} items from web_search`);
