@@ -19,6 +19,7 @@ import {
   updateDeliveredHistory,
   type DeliveredItem,
 } from './utils/deliveredHistory.js';
+import { saveRunArchive } from './utils/runArchive.js';
 
 const S3_KEY_MORNING = 'pending/morning-email.json';
 const S3_KEY_EVENING = 'pending/evening-email.json';
@@ -135,6 +136,27 @@ async function runCollectPhaseFor(
 
   const webResult = results.find((r) => r.agentId === 'web');
   const webData = webResult?.data as WebAgentData | undefined;
+
+  // 実行アーカイブを保存（評価ハーネスのゴールデンセット原料。失敗しても配信は止めない）
+  if (webData) {
+    try {
+      await saveRunArchive(s3, bucket, {
+        isoDate: todayIso,
+        edition,
+        topics: config.topics.map((t) => ({ id: t.id, label: t.label, keywords: t.keywords })),
+        sources: webData.sources ?? [],
+        byTopic: webData.byTopic,
+        picks: data.picks ?? [],
+        usage: results.map((r) => ({
+          agentId: r.agentId,
+          tokensUsed: r.tokensUsed,
+          durationMs: r.durationMs,
+        })),
+      });
+    } catch (err) {
+      console.warn(`[index] failed to save run archive: ${(err as Error).message}`);
+    }
+  }
 
   // 本日掲載分を配信済み履歴に追加（保持期間外は削除）
   if (webData) {

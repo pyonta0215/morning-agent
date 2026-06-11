@@ -24,6 +24,8 @@ export interface WebItem {
 
 export interface WebAgentData {
   byTopic: Record<string, WebItem[]>;
+  /** 収集ソースの生データ（実行アーカイブ用。composer は参照しない） */
+  sources?: Array<{ topicId: string; topicLabel: string; url: string; content: string }>;
 }
 
 export class WebAgent implements Agent {
@@ -136,7 +138,15 @@ ${fetchedContent}`,
       success: true,
     });
 
-    const data: WebAgentData = { byTopic: {} };
+    const data: WebAgentData = {
+      byTopic: {},
+      sources: fetchResults.map((r) => ({
+        topicId: r.topicId,
+        topicLabel: r.topicLabel,
+        url: r.url,
+        content: r.content,
+      })),
+    };
     const textBlock = summaryResponse.content.find((c) => c.type === 'text');
     if (textBlock && textBlock.type === 'text') {
       try {

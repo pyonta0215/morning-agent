@@ -5,3 +5,4 @@ cdk.out/
 *.js.map
 *.d.ts
 .DS_Store
+eval-results/
