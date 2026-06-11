@@ -30,9 +30,12 @@ import { normalizeUrl } from '../src/utils/deliveredHistory.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
-// .env のAWSキーはSES送信用でS3権限がないため、~/.aws の default プロファイルに委ねる
+// .env のAWSキーはSES送信用でS3権限がないため、~/.aws の default プロファイルに委ねる。
+// AWS_REGION も SES 用（us-east-1）なのでS3には使わない（バケットは ap-northeast-1）
 delete process.env.AWS_ACCESS_KEY_ID;
 delete process.env.AWS_SECRET_ACCESS_KEY;
+
+const S3_REGION = 'ap-northeast-1';
 
 const MODEL = 'claude-haiku-4-5-20251001';
 /** judge に渡すソース抜粋の上限文字数（トークン抑制） */
@@ -246,7 +249,7 @@ async function main() {
       console.error('エラー: --bucket または STORAGE_BUCKET 環境変数を指定してください。');
       process.exit(1);
     }
-    const s3 = new S3Client({ region: process.env.AWS_REGION ?? 'ap-northeast-1' });
+    const s3 = new S3Client({ region: argValue('--region') ?? S3_REGION });
     let keys = await listRunArchiveKeys(s3, bucket);
     if (days) keys = keys.slice(-days);
     console.log(`S3アーカイブ ${keys.length} 件を評価します（bucket: ${bucket}）`);
