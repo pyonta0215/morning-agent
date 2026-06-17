@@ -38,8 +38,8 @@ export class MorningAgentLambdaStack extends cdk.Stack {
         NODE_ENV: 'production',
         SES_REGION: 'us-east-1',
         STORAGE_BUCKET: storageBucket.bucketName,
-        // web_search 補強（デフォルト無効。デプロイ時に ENABLE_WEB_SEARCH=true で有効化）
-        ENABLE_WEB_SEARCH: process.env.ENABLE_WEB_SEARCH ?? 'false',
+        // web_search 補強（本番デフォルト有効。コスト調整時に ENABLE_WEB_SEARCH=false で無効化）
+        ENABLE_WEB_SEARCH: process.env.ENABLE_WEB_SEARCH ?? 'true',
         WEB_SEARCH_MAX_USES: process.env.WEB_SEARCH_MAX_USES ?? '1',
       },
     });
