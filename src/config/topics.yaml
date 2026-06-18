@@ -5,7 +5,7 @@ topics:
     keywords: [Claude, GPT, Gemini, LLM, 生成AI]
     urls:
       - https://www.anthropic.com/news
-      - https://openai.com/blog
+      - https://openai.com/news/rss.xml
 
   - id: finance
     label: 金融・投資

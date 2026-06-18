@@ -277,6 +277,12 @@ function buildHtmlEmail(
     letter-spacing: 1px;
     border-bottom: 2px solid #c00;
   }
+  .topic-empty {
+    font-size: 12px;
+    color: #999;
+    padding: 12px;
+    font-style: italic;
+  }
 
   /* ── グリッド（6カラム） ── */
   .article-grid {
@@ -339,6 +345,15 @@ function buildHtmlEmail(
 
 function topicSection(topic: string, items: WebItem[]): string {
   const sorted = [...items].sort((a, b) => b.score - a.score);
+
+  // dedup後に0件になったトピックは空欄ではなく「新規ニュースなし」を明示する
+  // （収集はしたが未配信の新ネタが無かった、を読み手に伝えて欠落との誤認を防ぐ）
+  if (sorted.length === 0) {
+    return `<div class="topic-block">
+  <div class="topic-banner">${escHtml(topic)}</div>
+  <div class="topic-empty">本日は新規ニュースなし</div>
+</div>`;
+  }
 
   const cells = sorted.map((item) => {
     const span = GRID_SPAN[item.score] ?? 2;
@@ -408,13 +423,17 @@ function buildTextEmail(
 
   Object.entries(byTopic).forEach(([topic, items]) => {
     lines.push(`== ${topic} ==`);
-    items
-      .sort((a, b) => b.score - a.score)
-      .forEach((item) => {
-        lines.push(`・${item.title}`);
-        lines.push(`  ${item.summary}`);
-        lines.push(`  ${item.url}`);
-      });
+    if (items.length === 0) {
+      lines.push('（本日は新規ニュースなし）');
+    } else {
+      items
+        .sort((a, b) => b.score - a.score)
+        .forEach((item) => {
+          lines.push(`・${item.title}`);
+          lines.push(`  ${item.summary}`);
+          lines.push(`  ${item.url}`);
+        });
+    }
     lines.push('');
   });
 
