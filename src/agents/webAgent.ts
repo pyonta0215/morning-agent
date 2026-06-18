@@ -14,6 +14,11 @@ const DELIVERED_TITLES_DAYS = 7;
 /** web_search の1トピックあたりの最大検索回数（コスト上限の主レバー。$0.01/検索） */
 const WEB_SEARCH_MAX_USES_DEFAULT = 1;
 
+/** 集約フェーズの採用スコア閾値。これ以上の fetch 記事を全件掲載する */
+const SCORE_THRESHOLD = 4;
+/** 1トピックあたりの掲載上限（暴発防止の安全弁。通常は到達しない） */
+const MAX_ITEMS_PER_TOPIC = 8;
+
 export interface WebItem {
   url: string;
   title: string;
@@ -107,16 +112,21 @@ ${recentDeliveredTitles.map((t) => `・${t}`).join('\n')}
     // 集約: structured outputs でスキーマを強制（1回のみ）
     const summaryResponse = await this.client.messages.create({
       model: MODEL,
-      max_tokens: 4096,
+      max_tokens: 8192,
       system:
-        'あなたはニュース編集者です。収集した情報を重要度でフィルタリングして出力してください。',
+        'あなたはニュース編集者です。収集した情報をトピックごとに整理し、各記事へ重要度スコアを付けて出力してください。',
       output_config: { format: buildSummaryFormat(input.config.topics) },
       messages: [
         {
           role: 'user',
-          content: `今日は ${dateStr} です。以下の各URLから収集した内容をもとに、トピックごとに重要度スコア（1-5）付きで3〜5件に絞り込んでください。
+          content: `今日は ${dateStr} です。以下の各URLから収集した内容をもとに、設定された全トピック（${input.config.topics
+            .map((t) => t.id)
+            .join(
+              ', '
+            )}）それぞれについて、収集データ内の候補記事を網羅的に列挙し、各記事に重要度スコア（1-5）を付与してください。件数を自分で絞り込まないでください（掲載可否は後段で機械的に判定します）。
+- スコア基準: 5=一次情報の重大発表 / 4=注目に値する進展 / 3=通常ニュース / 2=軽微 / 1=無関係寄り。
 - 古い記事（2日以上前と明示されているもの）は含めないでください。日付が不明な記事は最新として扱ってください。
-- 各記事の topic には収集データのヘッダーに記載されたトピックIDを使ってください。
+- 各トピックのキーには、そのトピックの収集データに実在する記事のみを入れてください（記事を創作しないこと）。該当記事が無いトピックのみ空配列にしてください。
 ${deliveredSection}
 収集データ:
 ${fetchedContent}`,
@@ -152,15 +162,31 @@ ${fetchedContent}`,
     const textBlock = summaryResponse.content.find((c) => c.type === 'text');
     if (textBlock && textBlock.type === 'text') {
       try {
-        // structured outputs によりスキーマ準拠のJSONが保証される
-        const parsed = JSON.parse(textBlock.text) as { items: SummaryItem[] };
-        for (const item of parsed.items) {
-          (data.byTopic[item.topic] ??= []).push({ ...item, origin: 'fetch' });
+        // structured outputs によりスキーマ準拠のJSON（トピックID別オブジェクト）が保証される
+        const parsed = JSON.parse(textBlock.text) as Record<string, SummaryItem[]>;
+        let rescued = 0;
+        for (const topic of input.config.topics) {
+          const raw = (parsed[topic.id] ?? []).map((it) => ({
+            ...it,
+            topic: topic.id,
+            origin: 'fetch' as const,
+          }));
+          // スコア閾値以上を全件採用。閾値超えが無いが候補はあるトピックは最高スコア1件を救済（空トピック=崩壊を防ぐ）
+          let kept = raw.filter((i) => i.score >= SCORE_THRESHOLD);
+          if (kept.length === 0 && raw.length > 0) {
+            kept = [raw.reduce((a, b) => (b.score > a.score ? b : a))];
+            rescued++;
+          }
+          kept.sort((a, b) => b.score - a.score);
+          data.byTopic[topic.id] = kept.slice(0, MAX_ITEMS_PER_TOPIC);
         }
-        const topicCount = Object.keys(data.byTopic).length;
-        console.log(`[WebAgent] parsed: ${topicCount} topics, ${parsed.items.length} items`);
-      } catch {
-        console.warn('[WebAgent] Failed to parse summary response as JSON');
+        const itemCount = Object.values(data.byTopic).flat().length;
+        const topicCount = Object.values(data.byTopic).filter((v) => v.length > 0).length;
+        console.log(
+          `[WebAgent] parsed: ${topicCount} topics, ${itemCount} items (threshold>=${SCORE_THRESHOLD}, rescued ${rescued})`
+        );
+      } catch (err) {
+        console.warn(`[WebAgent] Failed to parse summary response as JSON: ${(err as Error).message}`);
         console.log('[WebAgent] summary raw response:\n', textBlock.text);
       }
     } else {
@@ -368,40 +394,42 @@ ${deliveredTitles.map((t) => `  ・${t}`).join('\n')}`
 
 /** 集約呼び出しの structured outputs 1件分（topic で byTopic にグループ化される） */
 interface SummaryItem {
-  topic: string;
   url: string;
   title: string;
   summary: string;
   score: number;
 }
 
-/** 集約呼び出し用の JSON スキーマ。topic は設定済みトピックIDに限定する */
+/**
+ * 集約呼び出し用の JSON スキーマ。トピックIDをキーに持つオブジェクトとし、
+ * 全トピックを required にすることで「特定トピックだけ返す」崩壊を生成段階で構造的に防ぐ。
+ * 該当記事が無いトピックは空配列を許容（記事の創作を避けるため minItems は課さない）。
+ */
 function buildSummaryFormat(topics: Topic[]): Anthropic.JSONOutputFormat {
+  const itemSchema = {
+    type: 'object',
+    properties: {
+      url: { type: 'string' },
+      title: { type: 'string' },
+      summary: { type: 'string', description: '2〜3文の要約' },
+      score: { type: 'integer', enum: [1, 2, 3, 4, 5] },
+    },
+    required: ['url', 'title', 'summary', 'score'],
+    additionalProperties: false,
+  };
+  const topicProps: Record<string, unknown> = {};
+  for (const t of topics) {
+    topicProps[t.id] = { type: 'array', items: itemSchema };
+  }
   return {
     type: 'json_schema',
     schema: {
       type: 'object',
-      properties: {
-        items: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              topic: { type: 'string', enum: topics.map((t) => t.id) },
-              url: { type: 'string' },
-              title: { type: 'string' },
-              summary: { type: 'string', description: '2〜3文の要約' },
-              score: { type: 'integer', enum: [1, 2, 3, 4, 5] },
-            },
-            required: ['topic', 'url', 'title', 'summary', 'score'],
-            additionalProperties: false,
-          },
-        },
-      },
-      required: ['items'],
+      properties: topicProps,
+      required: topics.map((t) => t.id),
       additionalProperties: false,
     },
-  };
+  } as Anthropic.JSONOutputFormat;
 }
 
 /**

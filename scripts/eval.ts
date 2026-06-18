@@ -183,7 +183,7 @@ async function judgeRun(
 
   const response = await client.messages.create({
     model: MODEL,
-    max_tokens: 4096,
+    max_tokens: 8192,
     system:
       'あなたはニュース配信の品質監査員です。掲載記事を1件ずつ厳密に判定してください。',
     output_config: { format: JUDGE_FORMAT },
