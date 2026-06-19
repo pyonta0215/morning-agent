@@ -10,14 +10,16 @@ topics:
   - id: finance
     label: 金融・投資
     keywords: [日経平均, S&P500, NISA, 投資信託]
-    urls:
-      - https://www.nikkei.com/markets/
+    # 投資ニュースはkeywords由来のGoogle News検索で取得。
+    # nikkei.com/markets は市況数値のみで記事見出しが取れず採用実績ゼロのため除外（2026-06-19監査）
+    urls: []
 
   - id: game
     label: ゲーム・Nintendo
     keywords: [Nintendo, Switch, ゲーム新作]
-    urls:
-      - https://www.nintendo.co.jp/news/
+    # ゲームニュースはkeywords由来のGoogle News検索で取得。
+    # nintendo.co.jp/news はJS必須で本文取得不可（113字の空ページ）のため除外（2026-06-19監査）
+    urls: []
 
   - id: paper
     label: AI論文

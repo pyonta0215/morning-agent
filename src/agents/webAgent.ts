@@ -60,7 +60,7 @@ export class WebAgent implements Agent {
 
     // 静的URLに加えて、各トピックのキーワードでGoogle News RSSを検索
     const allUrls = input.config.topics.flatMap((topic) => {
-      const staticUrls = topic.urls.map((url) => ({
+      const staticUrls = (topic.urls ?? []).map((url) => ({
         url,
         topicId: topic.id,
         topicLabel: topic.label,
