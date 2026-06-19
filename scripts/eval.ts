@@ -137,13 +137,14 @@ const JUDGE_FORMAT: Anthropic.JSONOutputFormat = {
             url: { type: 'string' },
             category_ok: {
               type: 'boolean',
-              description: '記事が割り当てトピックの定義に合致しているか',
+              description:
+                'トピック適合のみで判定。記事が収集ソース抜粋に存在するかとは無関係（ソースに無くても内容が合致すれば true）',
             },
             fidelity: {
               type: 'string',
               enum: ['ok', 'ng', 'unknown'],
               description:
-                'タイトルと要約が収集ソースに裏付けられているか。ソース抜粋に記事が見つからない場合は unknown',
+                'タイトル・要約が収集ソース抜粋に裏付けられていれば ok、明確に食い違えば ng、見つからなければ unknown。[web検索由来] の記事は必ず unknown（ng にしない）',
             },
             note: { type: 'string', description: '判定理由（1文・ngとunknownのみ必須相当）' },
           },
@@ -162,12 +163,16 @@ async function judgeRun(
   archive: RunArchive
 ): Promise<{ verdicts: JudgeVerdict[]; inputTokens: number; outputTokens: number }> {
   const items = Object.entries(archive.byTopic).flatMap(([topic, list]) =>
-    list.map((i) => ({ topic, url: i.url, title: i.title, summary: i.summary }))
+    list.map((i) => ({ topic, url: i.url, title: i.title, summary: i.summary, origin: i.origin }))
   );
   if (items.length === 0) return { verdicts: [], inputTokens: 0, outputTokens: 0 };
 
   const topicsDef = archive.topics
-    .map((t) => `- ${t.id}（${t.label}）: キーワード例 [${t.keywords.join(', ')}]`)
+    .map((t) =>
+      t.keywords.length > 0
+        ? `- ${t.id}（${t.label}）: キーワード例 [${t.keywords.join(', ')}]（例示であり網羅ではない）`
+        : `- ${t.id}（${t.label}）: キーワード指定なし。ラベル「${t.label}」の意味でトピック適合を判定する`
+    )
     .join('\n');
 
   const sourcesText = archive.sources
@@ -177,7 +182,7 @@ async function judgeRun(
   const itemsText = items
     .map(
       (i, idx) =>
-        `${idx + 1}. [topic: ${i.topic}] ${i.title}\n   URL: ${i.url}\n   要約: ${i.summary}`
+        `${idx + 1}. [topic: ${i.topic}]${i.origin === 'web_search' ? ' [web検索由来]' : ''} ${i.title}\n   URL: ${i.url}\n   要約: ${i.summary}`
     )
     .join('\n');
 
@@ -196,8 +201,8 @@ async function judgeRun(
 ${topicsDef}
 
 【判定基準】
-- category_ok: 記事内容が割り当てられたトピック定義に合致していれば true
-- fidelity: タイトル・要約が下記の収集ソース抜粋に裏付けられていれば ok、ソースと食い違う・誇張があれば ng、ソース抜粋内に該当記事が見つからなければ unknown（web検索由来の記事は通常 unknown になる）
+- category_ok: 記事内容が割り当てトピックの定義（ラベルの意味）に合致していれば true。キーワードは例示であって網羅ではなく、キーワードが空でもラベルの意味に合致していれば true とする。トピック適合のみで判定し、その記事が下記の収集ソース抜粋に存在するかどうかとは無関係に判断する（ソースに無くても内容が合致していれば true）。note で「適合する」と述べた場合は category_ok を必ず true にすること（適合を認めながら false にする自己矛盾を禁止）。
+- fidelity: タイトル・要約が下記の収集ソース抜粋に裏付けられていれば ok、ソースと明確に食い違う・誇張があれば ng、ソース抜粋内に該当記事が見つからなければ unknown。[web検索由来] と付いた記事は収集ソース抜粋には載らないため必ず unknown とする（ng にしない）。
 
 【掲載記事】
 ${itemsText}
@@ -209,10 +214,20 @@ ${sourcesText}`,
   });
 
   const textBlock = response.content.find((c) => c.type === 'text');
-  const verdicts =
+  const rawVerdicts =
     textBlock && textBlock.type === 'text'
       ? (JSON.parse(textBlock.text) as { results: JudgeVerdict[] }).results
       : [];
+  // web_search由来は fetch 収集ソース抜粋では原理的に裏付け検証できない。judge は同じ状況を
+  // unknown/ng に不安定判定する（6/19 JetFlow=ng vs 6/16・6/17 の同種arxiv=unknown）ため、
+  // コード側で fidelity=unknown に確定させて忠実性スコアのぶれを断つ。
+  // web_search由来のハルシネーション検出は judge ではなく searchTopic の citation 照合が担う。
+  const searchUrls = new Set(items.filter((i) => i.origin === 'web_search').map((i) => i.url));
+  const verdicts = rawVerdicts.map((v) =>
+    searchUrls.has(v.url) && v.fidelity !== 'unknown'
+      ? { ...v, fidelity: 'unknown' as const, note: `[web検索由来→unknown固定] ${v.note}` }
+      : v
+  );
   return {
     verdicts,
     inputTokens: response.usage.input_tokens,
