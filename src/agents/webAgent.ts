@@ -336,6 +336,9 @@ ${deliveredTitles.map((t) => `  ・${t}`).join('\n')}`
     let outputTokens = 0;
     let webSearchRequests = 0;
     let finalText = '';
+    // web_search が実際に返した結果URL（citation照合の真実集合）。
+    // Claude の出力JSONはこの集合に含まれるURLだけを残し、捏造URLを弾く。
+    const resultUrls = new Set<string>();
 
     // server-side ツールループは pause_turn で中断しうるため再送して継続する
     const maxContinuations = 3;
@@ -358,6 +361,13 @@ ${deliveredTitles.map((t) => `  ・${t}`).join('\n')}`
       outputTokens += response.usage.output_tokens;
       webSearchRequests += response.usage.server_tool_use?.web_search_requests ?? 0;
 
+      // 各レスポンス（pause_turn 中継分も含む）から web_search の実結果URLを集める
+      for (const block of response.content) {
+        if (block.type === 'web_search_tool_result' && Array.isArray(block.content)) {
+          for (const r of block.content) resultUrls.add(normalizeUrl(r.url));
+        }
+      }
+
       if (response.stop_reason === 'pause_turn') {
         messages.push({ role: 'assistant', content: response.content });
         continue;
@@ -374,7 +384,7 @@ ${deliveredTitles.map((t) => `  ・${t}`).join('\n')}`
       items?: Array<{ url?: string; title?: string; summary?: string; score?: number }>;
     }>(finalText);
 
-    const items: WebItem[] = (parsed?.items ?? [])
+    const parsedItems: WebItem[] = (parsed?.items ?? [])
       .filter((it): it is { url: string; title: string; summary?: string; score?: number } =>
         Boolean(it?.url && it?.title)
       )
@@ -387,7 +397,33 @@ ${deliveredTitles.map((t) => `  ・${t}`).join('\n')}`
         origin: 'web_search' as const,
       }));
 
-    console.log(`[WebAgent] searchTopic ${topic.id}: parsed ${items.length} items from web_search`);
+    // citation照合ゲート: web_search が実際に返したURLに無い記事は捏造（ハルシネーション）
+    // 疑いとして除外する。searchTopic はモデルが出力JSONを手書きするため実在検証が無く、
+    // 存在しないarxiv ID等が混入しうる（例: 2026-06-19 JetFlow 2606.18394）。
+    // 結果URLを1件も取得できなかった場合のみ、挙動維持のためゲートをスキップして警告する。
+    let items: WebItem[];
+    if (resultUrls.size === 0) {
+      items = parsedItems;
+      if (parsedItems.length > 0) {
+        console.warn(
+          `[WebAgent] searchTopic ${topic.id}: web_search結果URLを取得できずcitation照合をスキップ（${parsedItems.length}件を無検証で通過）`
+        );
+      }
+    } else {
+      items = parsedItems.filter((it) => resultUrls.has(normalizeUrl(it.url)));
+      const dropped = parsedItems.filter((it) => !resultUrls.has(normalizeUrl(it.url)));
+      if (dropped.length > 0) {
+        console.warn(
+          `[WebAgent] searchTopic ${topic.id}: citation照合で${dropped.length}件をハルシネーション疑いとして除外: ${dropped
+            .map((d) => d.url)
+            .join(', ')}`
+        );
+      }
+    }
+
+    console.log(
+      `[WebAgent] searchTopic ${topic.id}: parsed ${parsedItems.length} → verified ${items.length} items from web_search`
+    );
     return { items, inputTokens, outputTokens, webSearchRequests };
   }
 }
