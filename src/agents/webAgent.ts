@@ -18,6 +18,9 @@ const WEB_SEARCH_MAX_USES_DEFAULT = 1;
 const SCORE_THRESHOLD = 4;
 /** 1トピックあたりの掲載上限（暴発防止の安全弁。通常は到達しない） */
 const MAX_ITEMS_PER_TOPIC = 8;
+/** web_search由来itemのスコア上限。fetch（>=SCORE_THRESHOLD）より必ず下に置き、
+ *  二次ソースの鮮度補強が一次情報の見出しを押しのけて紙面先頭に立つのを防ぐ（demote）。 */
+const WEB_SEARCH_SCORE_CAP = SCORE_THRESHOLD - 1;
 
 export interface WebItem {
   url: string;
@@ -259,18 +262,30 @@ ${fetchedContent}`,
       totalOutput += res.outputTokens;
       totalRequests += res.webSearchRequests;
 
-      // byTopic にマージ（同一URLの重複は除去）
+      // byTopic にマージ。URL一致dedup（seen）に加え、トピック重複ガードで
+      // 既存fetch記事・既配信記事と同一ストーリー（モデル名＋版数などの識別トークン一致）の
+      // web_search記事を除外する。別URLで同一ネタを蒸し返す穴（例: 6/23 GPT-5.6再掲）を塞ぐ。
       const existing = data.byTopic[t.id] ?? [];
+      const priorTokenSets = [
+        ...existing.map((i) => distinctiveTokens(i.title)),
+        ...pickRecentDeliveredTitles(delivered, dateStr, t.id).map(distinctiveTokens),
+      ];
       const seen = new Set(existing.map((i) => i.url));
+      let added = 0;
+      let topicalDropped = 0;
       for (const item of res.items) {
-        if (!seen.has(item.url)) {
-          existing.push(item);
-          seen.add(item.url);
+        if (seen.has(item.url)) continue;
+        if (isTopicalDup(item.title, priorTokenSets)) {
+          topicalDropped++;
+          continue;
         }
+        existing.push(item);
+        seen.add(item.url);
+        added++;
       }
       data.byTopic[t.id] = existing;
       console.log(
-        `[WebAgent] web_search ${t.id}: +${res.items.length} items, ${res.webSearchRequests} searches`
+        `[WebAgent] web_search ${t.id}: +${added} items (候補${res.items.length}・トピック重複${topicalDropped}除外), ${res.webSearchRequests} searches`
       );
     });
 
@@ -396,7 +411,7 @@ ${deliveredTitles.map((t) => `  ・${t}`).join('\n')}`
         url: it.url,
         title: it.title,
         summary: it.summary ?? '',
-        score: typeof it.score === 'number' ? it.score : 3,
+        score: Math.min(typeof it.score === 'number' ? it.score : 3, WEB_SEARCH_SCORE_CAP),
         topic: topic.id,
         origin: 'web_search' as const,
       }));
@@ -490,6 +505,31 @@ function pickRecentDeliveredTitles(
     .sort((a, b) => (a.isoDate < b.isoDate ? 1 : -1))
     .slice(0, DELIVERED_TITLES_MAX)
     .map((d) => d.title);
+}
+
+/**
+ * タイトルから「モデル名＋版数」型の識別トークンを抽出する（トピック重複判定用）。
+ * 英字と数字の両方を含む長さ4以上の正規化トークンのみ採用。
+ * 例: "GPT-5.6"→"gpt56" / "Claude Opus 4.8"→（"claude"等は数字無しで除外、"opus4.8"連結時のみ"opus48"）。
+ * 年（2026）や単独数字は「英字＋数字」条件で除外され誤検知しにくい。言語非依存（日英タイトル横断で機能）。
+ */
+export function distinctiveTokens(title: string): Set<string> {
+  const tokens = new Set<string>();
+  for (const raw of title.toLowerCase().match(/[a-z0-9][a-z0-9.\-]*[a-z0-9]/g) ?? []) {
+    const norm = raw.replace(/[.\-]/g, '');
+    if (norm.length >= 4 && /[a-z]/.test(norm) && /[0-9]/.test(norm)) tokens.add(norm);
+  }
+  return tokens;
+}
+
+/** title が priorTokenSets のいずれかと識別トークンを共有する（＝同一ストーリー）かを判定する。 */
+export function isTopicalDup(title: string, priorTokenSets: Set<string>[]): boolean {
+  const t = distinctiveTokens(title);
+  if (t.size === 0) return false;
+  for (const prior of priorTokenSets) {
+    for (const tok of t) if (prior.has(tok)) return true;
+  }
+  return false;
 }
 
 /** マークダウンコードブロックまたは生テキストから最初のJSONオブジェクトを抽出する。 */
