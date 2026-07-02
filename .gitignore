@@ -6,3 +6,7 @@ cdk.out/
 *.d.ts
 .DS_Store
 eval-results/
+
+# ローカル専用（公開しない）
+.claude/
+docs/kakeibo-dock-14day-program.md
