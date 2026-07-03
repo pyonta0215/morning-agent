@@ -1,7 +1,8 @@
 topics:
   - id: ai
     label: AI・LLM
-    webSearch: true
+    # webSearch補強は2週間観測（6/22-7/3実測）で良質な純寄与0のため無効化（2026-07-03）。
+    # 供給はfetch（Google News/RSS）が鮮度・質とも上位互換。再有効化は webSearch: true を戻すだけ。
     keywords: [Claude, GPT, Gemini, LLM, 生成AI]
     urls:
       - https://www.anthropic.com/news
