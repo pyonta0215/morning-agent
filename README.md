@@ -153,10 +153,8 @@ MCP プロトコルは介さず、service 層（`search` / `trending`）を直�
       #   - { source: github, category: typescript, period: week }
 ```
 
-**依存関係**: `research-hub-mcp` は `optionalDependencies` の**ローカルパス参照**です
-（`file:../research-hub-mcp`）。未取得でも `npm install` は通りますが `npm run build` は失敗します。
-リポジトリを隣に clone するか、この機能を使わない場合は `src/tools/researchTool.ts` と
-`webAgent.ts` の該当箇所を外してください。
+**依存関係**: `research-hub-mcp` は GitHub のタグ参照（`github:pyonta0215/research-hub-mcp#v0.1.0`）で
+入ります。`npm install` 時に依存側の `prepare` がビルドを走らせるため、追加の手順は不要です。
 
 **環境変数**（Lambda では `infra/lib/lambdaStack.ts` が自動設定）:
 

@@ -22,7 +22,8 @@
     "axios": "^1.13.6",
     "dotenv": "^17.3.1",
     "googleapis": "^171.4.0",
-    "js-yaml": "^4.1.1"
+    "js-yaml": "^4.1.1",
+    "research-hub-mcp": "github:pyonta0215/research-hub-mcp#v0.1.0"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.161",
@@ -36,8 +37,5 @@
     "ts-node": "^10.9.2",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
-  },
-  "optionalDependencies": {
-    "research-hub-mcp": "file:../research-hub-mcp"
   }
 }
