@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { type Agent, type AgentInput, type AgentOutput, type Topic } from './base.js';
 import { handleWebFetch } from '../tools/webFetchTool.js';
+import { collectResearch, formatResearchBlock, researchUrlSet } from '../tools/researchTool.js';
 import { logLlm, calcCost } from '../utils/llmLogger.js';
 import { normalizeUrl, type DeliveredItem } from '../utils/deliveredHistory.js';
 
@@ -28,8 +29,8 @@ export interface WebItem {
   summary: string;
   score: number;
   topic: string;
-  /** 記事の取得経路（web_search寄与の計測用）。旧データには無い */
-  origin?: 'fetch' | 'web_search';
+  /** 記事の取得経路（各経路の純寄与の計測用）。旧データには無い */
+  origin?: 'fetch' | 'web_search' | 'research';
 }
 
 export interface WebAgentData {
@@ -85,21 +86,57 @@ export class WebAgent implements Agent {
       return [...staticUrls, newsSearchUrl];
     });
 
+    // research-hub 補強の対象トピック（ENABLE_RESEARCH_HUB=true かつ topics.yaml に research: があるもの）
+    const researchTopics =
+      process.env.ENABLE_RESEARCH_HUB === 'true'
+        ? input.config.topics.filter((t) => t.research)
+        : [];
+
     // LLMツールループを使わずにコードで並列フェッチ
     // RSSは日付（2日以内）と配信済みURLをコード側でフィルタして入力トークンを削減
-    const fetchResults = await Promise.all(
-      allUrls.map(async (u) => {
-        const result = await handleWebFetch({
-          url: u.url,
-          maxLength: 2000,
-          sinceDate: twoDaysAgo,
-          excludeUrls: deliveredUrls,
-        });
-        return { ...u, content: result.text ?? result.error ?? '（取得失敗）' };
-      })
-    );
+    // 直fetchと研究ハブはどちらも外部I/O待ちなので同時に走らせる
+    const [fetchResults, researchResults] = await Promise.all([
+      Promise.all(
+        allUrls.map(async (u) => {
+          const result = await handleWebFetch({
+            url: u.url,
+            maxLength: 2000,
+            sinceDate: twoDaysAgo,
+            excludeUrls: deliveredUrls,
+          });
+          return { ...u, content: result.text ?? result.error ?? '（取得失敗）' };
+        })
+      ),
+      Promise.all(
+        researchTopics.map(async (topic) => ({
+          topic,
+          result: await collectResearch(topic, { excludeUrls: deliveredUrls }),
+        }))
+      ),
+    ]);
 
-    const fetchedContent = fetchResults
+    // 研究ハブの結果を、直fetchと同じ体裁の「収集ソース」に変換して集約フェーズへ渡す
+    const researchSources = researchResults.map(({ topic, result }) => {
+      console.log(
+        `[WebAgent] research ${topic.id}: ${result.items.length} items ${JSON.stringify(result.stats)}` +
+          (result.errors.length > 0 ? ` / errors: ${result.errors.join(' | ')}` : '')
+      );
+      return {
+        topicId: topic.id,
+        topicLabel: `${topic.label}（研究ハブ: HN/arXiv/GitHub/RSS）`,
+        url: `research-hub://${topic.id}`,
+        content: formatResearchBlock(result.items),
+      };
+    });
+
+    // 研究ハブが実際に返したURL集合。集約結果の取得経路タグ付けに使う
+    const researchUrls = researchUrlSet(researchResults.flatMap((r) => r.result.items));
+    // 直fetchが持ってきた生テキスト。両方に出ているURLは fetch 側の手柄として数え、
+    // origin='research' を「研究ハブでしか拾えなかった記事」＝純寄与の意味に保つ
+    const fetchOnlyContent = fetchResults.map((r) => r.content).join('\n');
+
+    const allSources = [...fetchResults, ...researchSources];
+    const fetchedContent = allSources
       .map((r) => `=== [トピックID: ${r.topicId}] ${r.topicLabel} (${r.url}) ===\n${r.content}`)
       .join('\n\n');
 
@@ -155,7 +192,7 @@ ${fetchedContent}`,
 
     const data: WebAgentData = {
       byTopic: {},
-      sources: fetchResults.map((r) => ({
+      sources: allSources.map((r) => ({
         topicId: r.topicId,
         topicLabel: r.topicLabel,
         url: r.url,
@@ -169,10 +206,14 @@ ${fetchedContent}`,
         const parsed = JSON.parse(textBlock.text) as Record<string, SummaryItem[]>;
         let rescued = 0;
         for (const topic of input.config.topics) {
+          // origin は「研究ハブが返したURLと一致し、かつ直fetchの取得テキストに存在しない」で判定する。
+          // 研究ハブのURLはモデルの出力を経由せずコード側に残っているため実在が保証される
           const raw = (parsed[topic.id] ?? []).map((it) => ({
             ...it,
             topic: topic.id,
-            origin: 'fetch' as const,
+            origin: (researchUrls.has(normalizeUrl(it.url)) && !fetchOnlyContent.includes(it.url)
+              ? 'research'
+              : 'fetch') as 'research' | 'fetch',
           }));
           // スコア閾値以上を全件採用。閾値超えが無いが候補はあるトピックは最高スコア1件を救済（空トピック=崩壊を防ぐ）
           let kept = raw.filter((i) => i.score >= SCORE_THRESHOLD);
@@ -183,10 +224,12 @@ ${fetchedContent}`,
           kept.sort((a, b) => b.score - a.score);
           data.byTopic[topic.id] = kept.slice(0, MAX_ITEMS_PER_TOPIC);
         }
-        const itemCount = Object.values(data.byTopic).flat().length;
+        const allItems = Object.values(data.byTopic).flat();
+        const itemCount = allItems.length;
         const topicCount = Object.values(data.byTopic).filter((v) => v.length > 0).length;
+        const researchCount = allItems.filter((i) => i.origin === 'research').length;
         console.log(
-          `[WebAgent] parsed: ${topicCount} topics, ${itemCount} items (threshold>=${SCORE_THRESHOLD}, rescued ${rescued})`
+          `[WebAgent] parsed: ${topicCount} topics, ${itemCount} items (threshold>=${SCORE_THRESHOLD}, rescued ${rescued}, research由来 ${researchCount})`
         );
       } catch (err) {
         console.warn(`[WebAgent] Failed to parse summary response as JSON: ${(err as Error).message}`);

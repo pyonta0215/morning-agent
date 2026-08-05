@@ -5,7 +5,7 @@
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
-    "build": "esbuild src/index.ts --bundle --platform=node --target=node22 --outfile=dist/index.js --external:@aws-sdk/* --log-override:empty-import-meta=silent && cp src/config/topics.yaml dist/topics.yaml",
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node22 --outfile=dist/index.js --external:@aws-sdk/* --log-override:empty-import-meta=silent && cp src/config/topics.yaml dist/topics.yaml && node -e \"require('fs').copyFileSync(require.resolve('research-hub-mcp/config/feeds.json'),'dist/feeds.json')\"",
     "deploy": "npm run build && cd infra && npx cdk deploy --all",
     "test-run": "npx tsx scripts/test-run.ts",
     "oauth-setup": "npx tsx scripts/oauth-setup.ts"
@@ -36,5 +36,8 @@
     "ts-node": "^10.9.2",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
+  },
+  "optionalDependencies": {
+    "research-hub-mcp": "file:../research-hub-mcp"
   }
 }

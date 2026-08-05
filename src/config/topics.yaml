@@ -7,6 +7,15 @@ topics:
     urls:
       - https://www.anthropic.com/news
       - https://openai.com/news/rss.xml
+    # research-hub（HN/arXiv/GitHub/RSS）による補強。ENABLE_RESEARCH_HUB=true のときだけ効く。
+    # 切ったweb_search補強の無料リプレースとして、まずこのトピック1本で純寄与を観測する（2026-08-06〜）。
+    # queries は keywords と別立て: HN検索(Algolia)は語をANDで扱うため、1語ずつ投げないと0件になる。
+    research:
+      search:
+        queries: [Claude, OpenAI, Gemini, LLM]
+        sources: [hackernews]
+        since: 2d
+        limit: 3
 
   - id: finance
     label: 金融・投資

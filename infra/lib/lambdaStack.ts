@@ -41,6 +41,14 @@ export class MorningAgentLambdaStack extends cdk.Stack {
         // web_search 補強（本番デフォルト有効。コスト調整時に ENABLE_WEB_SEARCH=false で無効化）
         ENABLE_WEB_SEARCH: process.env.ENABLE_WEB_SEARCH ?? 'true',
         WEB_SEARCH_MAX_USES: process.env.WEB_SEARCH_MAX_USES ?? '1',
+        // research-hub 補強（HN/arXiv/GitHub/RSS。外部APIコストは0）
+        ENABLE_RESEARCH_HUB: process.env.ENABLE_RESEARCH_HUB ?? 'true',
+        // バンドル後は import.meta.url が失われ購読リストの場所を自力解決できないため明示する
+        // （未指定だとrssソースが常時0件になる。ビルド時に dist/feeds.json へコピー済み）
+        RESEARCH_HUB_FEEDS: '/var/task/feeds.json',
+        // キャッシュは無効。TTLが5〜15分なのに対し実行は1日2回で再利用余地がなく、
+        // かつバンドル後は node:sqlite を解決できずどのみちインメモリに落ちる（毎回warnログが出る）
+        RESEARCH_HUB_CACHE: 'off',
       },
     });
 

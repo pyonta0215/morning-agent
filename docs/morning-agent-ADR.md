@@ -130,6 +130,45 @@ OAuth2フローで初回手動認証を行い、取得したrefresh_tokenをAWS 
 
 ---
 
+## ADR-005: research-hub をMCPサーバーとしてではなくライブラリとして統合する
+
+### ステータス
+承認済み（2026-08-06）
+
+### コンテキスト
+web_search による鮮度補強を、2週間の観測（6/22〜7/3）で良質な純寄与0・$0.01/検索のため停止した。
+情報の供給源は Google News RSS と静的URLの直fetchのみになっており、コミュニティ・論文・OSSの動向は拾えていない。
+別途MCPサーバーとして作った research-hub-mcp（Hacker News / arXiv / GitHub / RSS を統一スキーマで返す）が、
+この穴をコスト0で埋められる。
+
+### 決定
+research-hub の **service層（`search` / `trending`）を直接importするライブラリとして**統合する。
+MCPプロトコル（stdioでのプロセス間通信）は使わない。取得結果は直fetchと同じ「収集ソース」の体裁に正規化し、
+既存の集約フェーズ（Haiku 1回・structured outputs）にそのまま流す。
+
+### 根拠
+- WebAgent は既に「LLMツールループを使わずコードで並列フェッチ」という構造で、research-hub の
+  「取得の正規化に徹し、要約はエージェントの仕事」という設計と責務境界が一致している
+- バッチ処理においてMCPは、プロセス起動とJSON-RPC往復のコストに見合う利点が無い
+  （ツール定義をLLMに見せて選ばせる必要が無いため）
+- web_search経路と違い、URLがモデルの出力を経由しない。捏造URL（2026-06-19に実在しないarXiv IDが混入）
+  が構造的に起こらず、citation照合ゲートの「照合できず素通し」ケースも無い
+- 境界をservice層に置いたため、将来Agent SDK＋MCPに載せ替える場合も `researchTool.ts` の差し替えで済む
+
+### バンドル時の制約（実測）
+esbuild の CJS 出力では `import.meta.url` が失われるため、ライブラリ側で以下の対応が必要だった:
+- `core/config.ts` のトップレベル `fileURLToPath(import.meta.url)` は**モジュール読込時にTypeErrorで落ちる**
+  → 遅延関数化＋try/catch。加えて購読リストは `RESEARCH_HUB_FEEDS` で明示する（未指定だとrssが常時0件）
+- `node:sqlite` キャッシュも同じ理由で解決できずインメモリに落ちる。1日2回の実行ではTTLの再利用余地が無いため
+  `RESEARCH_HUB_CACHE=off` を明示する
+
+### 結果
+`ai` トピック1本（HN・4クエリ・2日以内・スコア順）で開始。採用記事の `origin` で純寄与を計測し、
+web_searchを切ったときと同じ基準で継続可否を判断する。ドライラン実測では12件の候補から
+1〜3件が採用され、いずれも発行元への直リンク（Google Newsのリダイレクトを経由しない）だった。
+
+---
+
 ## Claude Code プロンプト集
 
 以下のプロンプトを Claude Code に順番に投入して実装を進める。

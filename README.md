@@ -128,6 +128,48 @@ S3 ロード失敗時は従来通りの動作にフォールバックします�
 
 設計の詳細と Managed Agents 評価については [`docs/managed-agents-evaluation.md`](docs/managed-agents-evaluation.md) を参照。
 
+## research-hub 補強（Hacker News / arXiv / GitHub / RSS）
+
+`ENABLE_RESEARCH_HUB=true` を設定すると、`topics.yaml` に `research:` を書いたトピックについて
+[research-hub-mcp](https://github.com/pyonta0215/research-hub-mcp) から候補記事を集め、直 fetch の結果と
+同じ集約フェーズに渡します。外部 API はいずれも無料・無認証のため**追加コストは Haiku の入力トークン分のみ**です。
+
+MCP プロトコルは介さず、service 層（`search` / `trending`）を直接呼びます。Lambda のバッチ処理では
+プロセス起動と JSON-RPC 往復が純粋な損になるためです（MCP サーバーとしては Claude Code から別途利用）。
+
+```yaml
+  - id: ai
+    label: AI・LLM
+    keywords: [Claude, GPT, Gemini, LLM, 生成AI]
+    urls: [...]
+    research:
+      search:
+        queries: [Claude, OpenAI, Gemini, LLM]  # 省略時は keywords を1語ずつ
+        sources: [hackernews]                   # 省略時は全ソース（arXiv は実測6〜14秒と遅い）
+        since: 2d
+        limit: 3                                # 1クエリあたり
+        # sort: score                           # 既定。date にすると HN の低スコア新着ばかりになる
+      # trending:
+      #   - { source: github, category: typescript, period: week }
+```
+
+**依存関係**: `research-hub-mcp` は `optionalDependencies` の**ローカルパス参照**です
+（`file:../research-hub-mcp`）。未取得でも `npm install` は通りますが `npm run build` は失敗します。
+リポジトリを隣に clone するか、この機能を使わない場合は `src/tools/researchTool.ts` と
+`webAgent.ts` の該当箇所を外してください。
+
+**環境変数**（Lambda では `infra/lib/lambdaStack.ts` が自動設定）:
+
+| 変数 | 役割 |
+|---|---|
+| `ENABLE_RESEARCH_HUB` | `true` で補強を有効化 |
+| `RESEARCH_HUB_FEEDS` | 購読リストの絶対パス。**バンドル後は自力解決できないため必須**（未指定だと rss ソースが常時0件になる） |
+| `RESEARCH_HUB_CACHE` | `off` 推奨。TTL 5〜15分のキャッシュは1日2回の実行では再利用余地がない |
+
+**計測**: 採用記事には取得経路が `origin` として付きます。`origin: 'research'` は
+「研究ハブが返し、かつ直 fetch のテキストには存在しなかった」記事＝**純寄与**を意味します
+（両方に出た記事は `fetch` に数えます）。ログは `[WebAgent] parsed: ... research由来 N`。
+
 ## ローカルテスト コマンド一覧
 
 | コマンド | 内容 |
@@ -184,6 +226,7 @@ src/
     composerAgent.ts        # メール生成・送信エージェント
   tools/
     webFetchTool.ts         # fetch_webpage ツール定義 & ハンドラー
+    researchTool.ts         # research-hub アダプタ（HN/arXiv/GitHub/RSS の取得と正規化）
   clients/
     sesClient.ts            # AWS SES クライアント
   config/
