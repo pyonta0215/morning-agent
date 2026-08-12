@@ -16,7 +16,8 @@
  */
 import type { RunArchive } from '../utils/runArchive.js';
 import type { StoryLedger } from '../utils/storyLedger.js';
-import { ACTIVE_WINDOW_DAYS } from '../utils/storyLedger.js';
+import { ACTIVE_WINDOW_DAYS, DORMANT_AFTER_DAYS, articleId } from '../utils/storyLedger.js';
+import { stats, dailyChanges, KIND_LABEL, type StoryKind } from '../utils/storyMetrics.js';
 
 /** サイトへ置く1ファイル */
 export interface SiteFile {
@@ -120,6 +121,142 @@ function collectStrings(value: unknown, out: string[] = []): string[] {
   return out;
 }
 
+// ── 紙面（非公開） ────────────────────────────────────────────────
+
+export interface PaperArticle {
+  id: string;
+  title: string;
+  summary: string;
+  url: string;
+  topic: string;
+  score: number;
+  /** 紙面に載った日 */
+  date: string;
+}
+
+export interface PaperStory {
+  id: string;
+  title: string;
+  topic: string;
+  firstSeen: string;
+  lastSeen: string;
+  /** 記事が出た日（昇順）。経過表の点になる */
+  dates: string[];
+  articleIds: string[];
+  count: number;
+  kind: StoryKind;
+  kindLabel: string;
+  spanDays: number;
+  isLongRunning: boolean;
+  /** 直近 DORMANT_AFTER_DAYS 日に動きがある。経過表の色分けに使う */
+  live: boolean;
+}
+
+export interface PaperDay {
+  date: string;
+  edition: 'morning' | 'evening';
+  articleIds: string[];
+  picks: Array<{ title: string; comment: string }>;
+}
+
+export interface PaperData {
+  generatedAt: string;
+  firstDate: string;
+  lastDate: string;
+  topics: Array<{ id: string; label: string }>;
+  stories: PaperStory[];
+  articles: PaperArticle[];
+  days: PaperDay[];
+  /** 日ごとの台帳の変化。メールの「動いた話題」と同じ材料 */
+  changes: Array<{
+    date: string;
+    created: number;
+    promoted: number;
+    wentDormant: number;
+    touched: number;
+  }>;
+}
+
+/**
+ * 紙面のデータ。DBは持たず、これ1本を配ってブラウザ側で検索・絞り込みする。
+ *
+ * **実測（60日・記事455件・話題140本）: 321KB / gzip 118KB。** 1年で 2MB / gzip 700KB 程度。
+ * 単独で見るぶんには問題ないが、当初見積り（年700KB）の3倍だったので書き残しておく。
+ * 重いのは記事の要約で、増え続けるのもここ。効いてくるようなら
+ * 「直近90日ぶんだけ要約を持ち、それ以前は見出しだけ」に落とすのが最初の一手。
+ *
+ * DBを持たないのは記事が再登場しない（dedupが効く）ため。
+ * yt-research-radar が D1 を使うのは日次スナップショット×チャンネル数で行が増えるからで、
+ * こちらは増え方が2桁遅い。
+ */
+export function buildPaperData(
+  archives: RunArchive[],
+  ledger: StoryLedger,
+  topics: Array<{ id: string; label: string }>,
+  generatedAt: string
+): PaperData {
+  const sorted = [...archives].sort((a, b) => (a.isoDate < b.isoDate ? -1 : 1));
+  const lastDate = sorted[sorted.length - 1]?.isoDate ?? generatedAt.slice(0, 10);
+
+  // 同じURLが複数日に出ることは稀にある（実測 451件中4件）。最初に出た日を採る
+  const articles = new Map<string, PaperArticle>();
+  const days: PaperDay[] = [];
+  for (const a of sorted) {
+    const ids: string[] = [];
+    for (const [topic, items] of Object.entries(a.byTopic)) {
+      for (const item of items) {
+        const id = articleId(item.url);
+        ids.push(id);
+        if (!articles.has(id)) {
+          articles.set(id, {
+            id,
+            title: item.title,
+            summary: item.summary,
+            url: item.url,
+            topic,
+            score: item.score,
+            date: a.isoDate,
+          });
+        }
+      }
+    }
+    days.push({ date: a.isoDate, edition: a.edition, articleIds: ids, picks: a.picks ?? [] });
+  }
+
+  const stories: PaperStory[] = ledger.stories
+    .filter((s) => !s.mergedInto)
+    .map((s) => {
+      const st = stats(s);
+      return {
+        id: s.id,
+        title: s.title,
+        topic: s.topic,
+        firstSeen: s.firstSeen,
+        lastSeen: s.lastSeen,
+        dates: Object.keys(s.dailyCounts).sort(),
+        articleIds: s.articleIds,
+        count: s.articleIds.length,
+        kind: st?.kind ?? 'unknown',
+        kindLabel: KIND_LABEL[st?.kind ?? 'unknown'],
+        spanDays: st?.spanDays ?? 1,
+        isLongRunning: st?.isLongRunning ?? false,
+        live: dayDiff(s.lastSeen, lastDate) <= DORMANT_AFTER_DAYS,
+      };
+    })
+    .sort((a, b) => (a.lastSeen < b.lastSeen ? 1 : a.lastSeen > b.lastSeen ? -1 : b.count - a.count));
+
+  return {
+    generatedAt,
+    firstDate: sorted[0]?.isoDate ?? lastDate,
+    lastDate,
+    topics,
+    stories,
+    articles: [...articles.values()],
+    days,
+    changes: dailyChanges(ledger, sorted.map((a) => a.isoDate)),
+  };
+}
+
 /** サイトへ置くファイル一式 */
 export function buildSiteFiles(
   archives: RunArchive[],
@@ -129,11 +266,19 @@ export function buildSiteFiles(
 ): SiteFile[] {
   const overview = buildOverview(archives, ledger, topics, generatedAt);
   assertOverviewIsPublicSafe(overview, ledger);
+  const paper = buildPaperData(archives, ledger, topics, generatedAt);
 
   return [
     {
       key: 'overview.json',
       body: JSON.stringify(overview),
+      contentType: 'application/json; charset=utf-8',
+      cacheControl: SHORT_CACHE,
+    },
+    {
+      // 認証の内側。CloudFront Function の PUBLIC_PATHS に入れないこと
+      key: 'paper/data.json',
+      body: JSON.stringify(paper),
       contentType: 'application/json; charset=utf-8',
       cacheControl: SHORT_CACHE,
     },

@@ -8,6 +8,7 @@
  */
 import {
   buildOverview,
+  buildPaperData,
   buildSiteFiles,
   assertOverviewIsPublicSafe,
   type OverviewData,
@@ -151,11 +152,37 @@ expectThrow('配列の奥に混ぜても落ちる', (o) => {
   (o as unknown as Record<string, unknown>).nested = [{ deep: [ledger.stories[1].title] }];
 });
 
+// ── 紙面データ
+const paper = buildPaperData(archives, ledger, TOPICS, '2026-08-10T21:25:00.000Z');
+check('記事が全件入る', paper.articles.length === 3, String(paper.articles.length));
+check('日ごとの束が入る', paper.days.length === 2, String(paper.days.length));
+check('話題が全件入る', paper.stories.length === 2, String(paper.stories.length));
+check('picks が入る', paper.days[0].picks.length === 1, JSON.stringify(paper.days[0].picks));
+check('日次の変化が入る', paper.changes.length === 2, String(paper.changes.length));
+check(
+  '直近に動きのある話題が live',
+  paper.stories.find((s) => s.id === 'st-20260612-0001')?.live === true
+);
+check(
+  '止まった話題は live でない',
+  paper.stories.find((s) => s.id === 'st-20260612-0002')?.live === false
+);
+check('型ラベルが日本語', typeof paper.stories[0].kindLabel === 'string' && paper.stories[0].kindLabel.length > 0);
+// 紙面には中身が入っていて当然。公開データと取り違えていないことの確認
+const paperJson = JSON.stringify(paper);
+check('紙面には記事の要約が入る', paperJson.includes('企業向けエージェントの次段階を示した。'));
+check('紙面にはストーリー名が入る', paperJson.includes(ledger.stories[0].title));
+
 // ── 正常系ではファイルが組み上がること
 const files = buildSiteFiles(archives, ledger, TOPICS, '2026-08-10T21:25:00.000Z');
-check('公開ファイルが1つ', files.length === 1, String(files.length));
-check('キーが overview.json', files[0]?.key === 'overview.json', files[0]?.key);
-check('Cache-Control が付いている', /max-age=\d+/.test(files[0]?.cacheControl ?? ''));
+check('ファイルが2つ', files.length === 2, String(files.length));
+const keys = files.map((f) => f.key).sort();
+check('キーが overview.json と paper/data.json', JSON.stringify(keys) === '["overview.json","paper/data.json"]', JSON.stringify(keys));
+for (const f of files) check(`Cache-Control が付いている (${f.key})`, /max-age=\d+/.test(f.cacheControl));
+// 公開ファイル側に中身が無いことを、組み上がったファイルの本文でも確認する
+const overviewFile = files.find((f) => f.key === 'overview.json')!;
+check('公開ファイルに要約が無い', !overviewFile.body.includes('企業向けエージェントの次段階を示した。'));
+check('公開ファイルにストーリー名が無い', !overviewFile.body.includes(ledger.stories[0].title));
 
 if (failed > 0) {
   console.error(`\n${failed}件 失敗`);
