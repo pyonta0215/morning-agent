@@ -1,10 +1,11 @@
 import type { Context } from 'aws-lambda';
+import Anthropic from '@anthropic-ai/sdk';
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { loadConfig, setTraceId } from './config/settings.js';
 import { SesClient } from './clients/sesClient.js';
 import { Pipeline } from './orchestrator/pipeline.js';
 import { WebAgent } from './agents/webAgent.js';
-import type { WebAgentData } from './agents/webAgent.js';
+import type { WebAgentData, WebItem } from './agents/webAgent.js';
 import { ComposerAgent, formatDateJST } from './agents/composerAgent.js';
 import type { AgentInput } from './agents/base.js';
 import {
@@ -20,6 +21,10 @@ import {
   type DeliveredItem,
 } from './utils/deliveredHistory.js';
 import { saveRunArchive } from './utils/runArchive.js';
+import { loadStoryLedger, saveStoryLedger } from './utils/storyStore.js';
+import { articleId } from './utils/storyLedger.js';
+import { assignArticlesToStories, type AssignableArticle } from './agents/storyAgent.js';
+import { catchAllWarnings } from './utils/storyMetrics.js';
 
 const S3_KEY_MORNING = 'pending/morning-email.json';
 const S3_KEY_EVENING = 'pending/evening-email.json';
@@ -62,6 +67,92 @@ async function loadEmailFromS3(s3: S3Client, bucket: string, key: string): Promi
 
 async function deleteEmailFromS3(s3: S3Client, bucket: string, key: string): Promise<void> {
   await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
+}
+
+/**
+ * その日の記事をストーリー台帳に割り当てて保存する。
+ *
+ * 対象は topics.yaml で `story: true` のトピックだけ（判断根拠はyamlのコメント）。
+ * 既定で有効。止めたいときだけ `STORY_LEDGER=false` を明示する
+ * （`ENABLE_*` 方式にすると、デプロイでフラグが落ちて数日気づかない事故が実際に起きたため）。
+ *
+ * 失敗しても収集・配信は止めない。ただし**その日ぶんの割当は自動では戻らない**ので、
+ * ログの `STORY_LEDGER_FAILED` を拾ったら archive から
+ * `npx tsx scripts/backfill-stories.ts --from <日付> --to <日付>` で埋める。
+ * archive は残っているので、遡って復旧できるのはここまで。
+ */
+async function updateStoryLedger(
+  s3: S3Client,
+  bucket: string,
+  topics: Array<{ id: string; story?: boolean }>,
+  byTopic: Record<string, WebItem[]>,
+  todayIso: string
+): Promise<void> {
+  if (process.env.STORY_LEDGER === 'false') {
+    console.log(JSON.stringify({ type: 'STORY_LEDGER_SKIPPED', reason: 'STORY_LEDGER=false' }));
+    return;
+  }
+
+  const storyTopics = new Set(topics.filter((t) => t.story).map((t) => t.id));
+  const articles: AssignableArticle[] = Object.entries(byTopic)
+    .filter(([topic]) => storyTopics.has(topic))
+    .flatMap(([topic, items]) =>
+      items.map((i) => ({ id: articleId(i.url), title: i.title, summary: i.summary, topic }))
+    );
+
+  if (articles.length === 0) {
+    console.log(JSON.stringify({ type: 'STORY_LEDGER_SKIPPED', reason: 'no articles', todayIso }));
+    return;
+  }
+
+  try {
+    const ledger = await loadStoryLedger(s3, bucket);
+    const before = ledger.stories.length;
+    const r = await assignArticlesToStories(new Anthropic(), ledger, todayIso, articles);
+    await saveStoryLedger(s3, bucket, ledger);
+
+    console.log(
+      JSON.stringify({
+        type: 'STORY_LEDGER_UPDATED',
+        todayIso,
+        articles: articles.length,
+        assigned: r.assigned,
+        created: r.created,
+        rejectedCrossTopic: r.rejectedCrossTopic,
+        mergedByTitle: r.mergedByTitle,
+        candidatesBefore: r.candidatesBefore,
+        candidatesAfter: r.candidatesAfter,
+        storiesBefore: before,
+        storiesAfter: ledger.stories.length,
+        costUsd: r.costUsd,
+      })
+    );
+
+    // 受け皿化は静かに進むので、越えた時点でログに出す（プロンプトを見直す合図）
+    for (const w of catchAllWarnings(ledger)) {
+      console.warn(
+        JSON.stringify({
+          type: 'STORY_CATCH_ALL_SUSPECTED',
+          storyId: w.storyId,
+          topic: w.topic,
+          title: w.title,
+          articleCount: w.articleCount,
+          topicTotal: w.topicTotal,
+          share: Number(w.share.toFixed(3)),
+        })
+      );
+    }
+  } catch (err) {
+    console.error(
+      JSON.stringify({
+        type: 'STORY_LEDGER_FAILED',
+        todayIso,
+        articles: articles.length,
+        error: (err as Error).message,
+        recovery: `npx tsx scripts/backfill-stories.ts --from ${todayIso} --to ${todayIso}`,
+      })
+    );
+  }
 }
 
 /** 収集フェーズ共通処理 */
@@ -156,6 +247,11 @@ async function runCollectPhaseFor(
     } catch (err) {
       console.warn(`[index] failed to save run archive: ${(err as Error).message}`);
     }
+  }
+
+  // ストーリー台帳を更新する（蓄積の本体。紙面・メール・概観はすべてここから作る）
+  if (webData) {
+    await updateStoryLedger(s3, bucket, config.topics, webData.byTopic, todayIso);
   }
 
   // 本日掲載分を配信済み履歴に追加（保持期間外は削除）
