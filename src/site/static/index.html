@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>毎朝、世の中を定点観測している</title>
+<style>
+  :root {
+    --ink: #14110e; --sub: #55504a; --mute: #9b948c; --line: #d9d4cb;
+    --accent: #a81a12; --bg: #efece5; --paper: #fbfaf6;
+    --mincho: "Hiragino Mincho ProN", "Yu Mincho", "YuMincho", "Noto Serif JP", serif;
+    --gothic: "Hiragino Kaku Gothic ProN", "Yu Gothic", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: var(--gothic); line-height: 1.75; font-feature-settings: "palt";
+    -webkit-text-size-adjust: 100%;
+  }
+  .sheet {
+    max-width: 900px; margin: 0 auto; background: var(--paper);
+    border-left: 1px solid var(--line); border-right: 1px solid var(--line);
+    padding: 30px 30px 64px; min-height: 100vh;
+  }
+  @media (max-width: 640px) { .sheet { padding: 20px 16px 48px; border: 0; } }
+
+  .masthead { text-align: center; border-bottom: 3px double var(--ink); padding-bottom: 9px; }
+  .masthead .name {
+    font-family: var(--mincho); font-size: clamp(20px, 5.2vw, 30px); font-weight: 700;
+    letter-spacing: .32em; text-indent: .32em; line-height: 1.3; margin: 0;
+  }
+  .masthead .sub { font-size: 10px; color: var(--mute); letter-spacing: .3em; margin-top: 3px; }
+  .colophon {
+    display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+    font-size: 10.5px; color: var(--sub); letter-spacing: .08em;
+    padding: 5px 2px; border-bottom: 1px solid var(--ink);
+  }
+
+  .lede { font-family: var(--mincho); font-size: 15px; line-height: 2; margin: 26px 0 28px; }
+  .lede strong { font-weight: 700; }
+
+  .stats {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink);
+  }
+  @media (max-width: 560px) { .stats { grid-template-columns: repeat(2, 1fr); }
+    .stats .stat:nth-child(-n+2) { border-bottom: 1px solid var(--line); } }
+  .stat { padding: 16px 6px; text-align: center; border-right: 1px solid var(--line); }
+  .stat:last-child { border-right: 0; }
+  @media (max-width: 560px) { .stat:nth-child(2n) { border-right: 0; } }
+  .stat .n { font-family: var(--mincho); font-size: 30px; font-weight: 700; line-height: 1.05; }
+  .stat .n small { font-size: 13px; margin-left: 2px; font-weight: 400; }
+  .stat .l { font-size: 10.5px; color: var(--mute); letter-spacing: .12em; margin-top: 5px; }
+
+  h2 {
+    font-family: var(--mincho); font-size: 13px; font-weight: 700; letter-spacing: .32em;
+    border-bottom: 1px solid var(--ink); padding-bottom: 4px; margin: 34px 0 14px;
+    display: flex; align-items: baseline; gap: 10px;
+  }
+  h2 small { font-family: var(--gothic); font-size: 10px; letter-spacing: 0; color: var(--mute); font-weight: 400; }
+
+  .spark { width: 100%; height: 96px; display: block; }
+  .spark-cap { font-size: 10.5px; color: var(--mute); letter-spacing: .08em; text-align: right; margin-top: 2px; }
+
+  .notes { list-style: none; margin: 0; padding: 0; }
+  .notes li {
+    font-family: var(--mincho); font-size: 14.5px; line-height: 1.9;
+    padding: 11px 0; border-bottom: 1px dotted var(--line);
+  }
+  .notes .d { font-family: var(--gothic); font-size: 10px; color: var(--mute); letter-spacing: .2em; display: block; }
+  .notes .empty { font-family: var(--gothic); font-size: 13px; color: var(--mute); border: 0; }
+
+  .privacy {
+    font-size: 12px; color: var(--sub); background: #f5f2eb;
+    border: 1px solid var(--line); padding: 11px 14px; margin-top: 18px;
+  }
+
+  .flow { width: 100%; height: auto; display: block; margin-top: 4px; }
+
+  .foot { margin-top: 40px; padding-top: 12px; border-top: 1px solid var(--line);
+    font-size: 10.5px; color: var(--mute); text-align: center; letter-spacing: .08em; }
+
+  .err { font-size: 13px; color: var(--accent); padding: 20px 0; }
+</style>
+</head>
+<body>
+<div class="sheet">
+
+  <div class="masthead">
+    <h1 class="name">定点観測</h1>
+    <div class="sub">MORNING AGENT</div>
+  </div>
+  <div class="colophon">
+    <span id="period">読み込み中…</span>
+    <span id="updated"></span>
+  </div>
+
+  <p class="lede">
+    毎朝、決まった時間にニュースを集めて、<strong>「続いている話題」の単位でまとめ直す</strong>仕組みを自作して動かしています。
+    記事は一度きりで流れていきますが、話題は何日も続きます。その続き方を記録しておくと、
+    あとから世の中の流れを俯瞰できるのではないか、というのを試しているところです。
+  </p>
+
+  <div class="stats" id="stats"></div>
+
+  <h2>活動の推移 <small>日ごとの記事数</small></h2>
+  <svg class="spark" id="spark" viewBox="0 0 480 96" preserveAspectRatio="none" aria-hidden="true"></svg>
+  <div class="spark-cap" id="spark-cap"></div>
+
+  <h2>追っている分野</h2>
+  <div id="topics" style="font-family:var(--mincho);font-size:15px"></div>
+
+  <h2>メモ <small>自分で書いたものだけ</small></h2>
+  <ul class="notes" id="notes">
+    <li class="empty">まだありません。</li>
+  </ul>
+
+  <div class="privacy">
+    記事の見出し・要約・話題の一覧は<strong>この面には出していません</strong>。
+    公開しているのは集計値と、自分で書いた文章だけです。
+  </div>
+
+  <h2>仕組み</h2>
+  <svg class="flow" viewBox="0 0 480 214" xmlns="http://www.w3.org/2000/svg" role="img"
+       aria-label="収集した記事を要約し、続いている話題に割り当てて台帳に貯め、そこから紙面・この概観ページ・メールを作る流れ">
+    <defs>
+      <marker id="ar" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+        <path d="M0,0 L7,3 L0,6 Z" fill="#9b948c"/>
+      </marker>
+    </defs>
+    <g font-family="sans-serif" font-size="11" text-anchor="middle">
+      <rect x="6" y="8" width="140" height="38" fill="#fff" stroke="#d9d4cb"/>
+      <text x="76" y="32" fill="#14110e">ニュース収集</text>
+      <rect x="170" y="8" width="140" height="38" fill="#fff" stroke="#d9d4cb"/>
+      <text x="240" y="26" fill="#14110e">要約・重要度づけ</text>
+      <text x="240" y="39" fill="#9b948c" font-size="9">LLM 1回目</text>
+      <rect x="334" y="8" width="140" height="38" fill="#fff" stroke="#d9d4cb"/>
+      <text x="404" y="26" fill="#14110e">続いている話題へ割当</text>
+      <text x="404" y="39" fill="#9b948c" font-size="9">LLM 2回目</text>
+
+      <rect x="100" y="76" width="160" height="44" fill="#fff" stroke="#a81a12" stroke-width="1.5"/>
+      <text x="180" y="95" fill="#a81a12" font-weight="bold">話題の台帳</text>
+      <text x="180" y="110" fill="#7d766d" font-size="9">失うと復元できない資産</text>
+
+      <rect x="300" y="79" width="140" height="38" fill="#fbfaf6" stroke="#d9d4cb"/>
+      <text x="370" y="103" fill="#14110e">自分のメモ</text>
+
+      <rect x="6" y="166" width="140" height="38" fill="#fff" stroke="#d9d4cb"/>
+      <text x="76" y="190" fill="#14110e">紙面（非公開）</text>
+      <rect x="170" y="166" width="140" height="38" fill="#fff" stroke="#d9d4cb"/>
+      <text x="240" y="190" fill="#14110e">この概観ページ</text>
+      <rect x="334" y="166" width="140" height="38" fill="#fff" stroke="#d9d4cb"/>
+      <text x="404" y="190" fill="#14110e">メール</text>
+    </g>
+    <g stroke="#9b948c" fill="none">
+      <path d="M148,27 L166,27" marker-end="url(#ar)"/>
+      <path d="M312,27 L330,27" marker-end="url(#ar)"/>
+      <path d="M404,46 L404,60 L180,60 L180,72" marker-end="url(#ar)"/>
+      <path d="M180,120 L180,146"/>
+      <path d="M370,117 L370,146"/>
+      <path d="M76,146 L404,146"/>
+      <path d="M76,146 L76,162" marker-end="url(#ar)"/>
+      <path d="M240,146 L240,162" marker-end="url(#ar)"/>
+      <path d="M404,146 L404,162" marker-end="url(#ar)"/>
+    </g>
+    <text x="285" y="140" font-family="sans-serif" font-size="9" fill="#9b948c" text-anchor="middle">ここから先はLLM不要</text>
+  </svg>
+
+  <div class="foot">この先（紙面）は非公開です</div>
+</div>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+
+  fetch('/overview.json', { cache: 'no-cache' })
+    .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(render)
+    .catch(function (e) {
+      $('period').textContent = '';
+      $('stats').innerHTML = '<div class="err" style="grid-column:1/-1">まだ生成されていません（' + e.message + '）</div>';
+    });
+
+  function fmt(iso) { return iso.slice(0, 4) + '年' + Number(iso.slice(5, 7)) + '月' + Number(iso.slice(8, 10)) + '日'; }
+
+  function render(d) {
+    $('period').textContent = fmt(d.firstDate) + ' 〜 ' + fmt(d.lastDate);
+    $('updated').textContent = '最終更新 ' + d.generatedAt.slice(0, 10);
+
+    $('stats').innerHTML = [
+      [d.days, '日', '観測した日数'],
+      [d.articles, '件', '集めた記事'],
+      [d.stories, '本', '見つけた話題'],
+      [d.activeStories, '本', 'いま継続中']
+    ].map(function (s) {
+      return '<div class="stat"><div class="n">' + s[0] + '<small>' + s[1] +
+        '</small></div><div class="l">' + s[2] + '</div></div>';
+    }).join('');
+
+    $('topics').textContent = d.topics.map(function (t) { return t.label; }).join('　／　');
+
+    var v = d.daily;
+    if (!v.length) return;
+    var max = v.reduce(function (m, x) { return x.count > m ? x.count : m; }, 1);
+    var W = 480, H = 96, bw = W / v.length;
+    var bars = v.map(function (x, i) {
+      var h = Math.max(1, (H - 10) * x.count / max);
+      return '<rect x="' + (i * bw + bw * 0.12).toFixed(2) + '" y="' + (H - h).toFixed(1) +
+        '" width="' + (bw * 0.76).toFixed(2) + '" height="' + h.toFixed(1) +
+        '" fill="#a81a12" opacity="0.72"><title>' + x.date + '　' + x.count + '件</title></rect>';
+    }).join('');
+    $('spark').innerHTML = bars +
+      '<line x1="0" y1="' + (H - 0.5) + '" x2="' + W + '" y2="' + (H - 0.5) + '" stroke="#d9d4cb"/>';
+    $('spark-cap').textContent = '最大 ' + max + '件/日　平均 ' +
+      (v.reduce(function (a, x) { return a + x.count; }, 0) / v.length).toFixed(1) + '件/日';
+  }
+})();
+</script>
+</body>
+</html>

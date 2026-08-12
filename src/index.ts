@@ -29,7 +29,7 @@ import {
   type RunArchive,
 } from './utils/runArchive.js';
 import { buildSiteFiles } from './site/siteData.js';
-import { getSiteS3Client, publishSiteFiles } from './site/publish.js';
+import { getSiteS3Client, publishSiteFiles, collectStaticFiles } from './site/publish.js';
 import { loadStoryLedger, saveStoryLedger } from './utils/storyStore.js';
 import { articleId } from './utils/storyLedger.js';
 import { assignArticlesToStories, type AssignableArticle } from './agents/storyAgent.js';
@@ -226,12 +226,15 @@ async function runPublishPhase(traceId: string): Promise<void> {
   const loaded = await Promise.all(keys.map((k) => loadRunArchive(s3, bucket, k)));
   const archives = loaded.filter((a): a is RunArchive => a !== null);
 
-  const files = buildSiteFiles(
-    archives,
-    ledger,
-    config.topics.map((t) => ({ id: t.id, label: t.label })),
-    new Date().toISOString()
-  );
+  const files = [
+    ...collectStaticFiles(),
+    ...buildSiteFiles(
+      archives,
+      ledger,
+      config.topics.map((t) => ({ id: t.id, label: t.label })),
+      new Date().toISOString()
+    ),
+  ];
 
   if (process.env.DRY_RUN === 'true') {
     console.log(

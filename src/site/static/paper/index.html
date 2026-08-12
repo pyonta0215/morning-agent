@@ -1,0 +1,530 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>朝刊エージェント便 ／ 紙面</title>
+<style>
+  :root {
+    --ink: #14110e; --sub: #55504a; --mute: #9b948c; --line: #d9d4cb;
+    --accent: #a81a12; --bg: #efece5; --paper: #fbfaf6;
+    --mincho: "Hiragino Mincho ProN", "Yu Mincho", "YuMincho", "Noto Serif JP", serif;
+    --gothic: "Hiragino Kaku Gothic ProN", "Yu Gothic", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: var(--gothic); line-height: 1.75; font-feature-settings: "palt";
+    -webkit-text-size-adjust: 100%;
+  }
+  a { color: inherit; }
+  .sheet {
+    max-width: 1080px; margin: 0 auto; background: var(--paper);
+    border-left: 1px solid var(--line); border-right: 1px solid var(--line);
+    padding: 22px 28px 70px; min-height: 100vh;
+  }
+  @media (max-width: 640px) { .sheet { padding: 16px 14px 48px; border: 0; } }
+
+  /* ── 題字 ── */
+  .masthead { text-align: center; border-bottom: 3px double var(--ink); padding-bottom: 8px; }
+  .masthead .name {
+    font-family: var(--mincho); font-size: clamp(19px, 5vw, 29px); font-weight: 700;
+    letter-spacing: .3em; text-indent: .3em; line-height: 1.3; margin: 0;
+  }
+  .masthead .sub { font-size: 10px; color: var(--mute); letter-spacing: .3em; margin-top: 3px; }
+  .colophon {
+    display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+    font-size: 10.5px; color: var(--sub); letter-spacing: .08em;
+    padding: 5px 2px; border-bottom: 1px solid var(--ink);
+  }
+
+  /* ── タブ ── */
+  .tabs { display: flex; flex-wrap: wrap; align-items: flex-end; border-bottom: 2px solid var(--ink); margin-top: 14px; }
+  .tabs button {
+    font-family: var(--mincho); font-size: 13.5px; letter-spacing: .22em; text-indent: .22em;
+    padding: 7px 20px; margin: 0 3px 0 0; cursor: pointer;
+    background: #e8e5de; color: var(--sub);
+    border: 1px solid var(--line); border-bottom: 0; border-radius: 0;
+  }
+  .tabs button[aria-selected="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .tabs .search { margin-left: auto; padding: 0 0 5px; }
+  .tabs input {
+    font-family: var(--gothic); font-size: 12.5px; padding: 5px 10px; width: 210px;
+    border: 1px solid var(--line); background: #fff; color: var(--ink); border-radius: 0;
+  }
+  @media (max-width: 640px) { .tabs .search { margin: 8px 0 0; width: 100%; } .tabs input { width: 100%; } }
+
+  h2.sec {
+    font-family: var(--mincho); font-size: 12.5px; font-weight: 700; letter-spacing: .3em;
+    border-bottom: 1px solid var(--ink); padding-bottom: 4px; margin: 26px 0 12px;
+    display: flex; align-items: baseline; gap: 10px;
+  }
+  h2.sec small { font-family: var(--gothic); font-size: 10px; letter-spacing: 0; color: var(--mute); font-weight: 400; }
+
+  /* ── 一面 ── */
+  .front { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 0 28px; margin-top: 18px; }
+  .front > .side { border-left: 1px solid var(--line); padding-left: 28px; }
+  @media (max-width: 860px) { .front { grid-template-columns: 1fr; }
+    .front > .side { border-left: 0; padding-left: 0; margin-top: 26px; } }
+
+  .kicker { display: inline-block; background: var(--accent); color: #fff;
+    font-size: 10.5px; font-weight: 700; letter-spacing: .2em; padding: 3px 10px; }
+  .lead-title {
+    font-family: var(--mincho); font-size: clamp(21px, 3.4vw, 29px); font-weight: 700;
+    line-height: 1.34; margin: 9px 0 8px;
+  }
+  .lead-meta {
+    font-size: 11px; color: var(--sub); letter-spacing: .06em; display: flex; gap: 16px; flex-wrap: wrap;
+    border-top: 1px solid var(--ink); border-bottom: 1px solid var(--line); padding: 6px 0; margin-bottom: 16px;
+  }
+  .lead-meta b { color: var(--accent); }
+
+  .tl { list-style: none; margin: 0; padding: 0 0 0 18px; border-left: 2px solid var(--line); }
+  .tl li { position: relative; padding: 0 0 14px 16px; font-family: var(--mincho); font-size: 14px; line-height: 1.6; }
+  .tl li::before {
+    content: ""; position: absolute; left: -24px; top: 9px; width: 9px; height: 9px;
+    border-radius: 50%; background: var(--accent); border: 2px solid var(--paper);
+  }
+  .tl li.dim::before { background: #b9b2a8; }
+  .tl .d { display: block; font-family: var(--gothic); font-size: 10px; color: var(--mute); letter-spacing: .18em; }
+  .tl .sm { display: block; font-family: var(--gothic); font-size: 11.5px; color: var(--sub); line-height: 1.6; margin-top: 2px; }
+  .tl a { text-decoration: none; border-bottom: 1px solid #cdc7bd; }
+  .tl a:hover { border-bottom-color: var(--accent); }
+
+  /* ── きょう動いた話題 ── */
+  .moved { list-style: none; margin: 0; padding: 0; }
+  .moved li { padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .moved b { display: block; font-family: var(--mincho); font-size: 14px; line-height: 1.5; font-weight: 700; }
+  .moved .note { font-size: 10.5px; color: var(--mute); letter-spacing: .04em; }
+  .badge { display: inline-block; font-size: 9.5px; font-weight: 700; letter-spacing: .12em;
+    padding: 2px 7px; margin-bottom: 5px; }
+  .b-new { background: var(--accent); color: #fff; }
+  .b-cont { background: #fff; color: var(--accent); border: 1px solid var(--accent); }
+  .b-end { background: #eae7e0; color: #6d675f; border: 1px solid var(--line); }
+
+  /* ── 経過表 ── */
+  .gantt { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  .gantt th {
+    font-size: 9.5px; color: var(--mute); font-weight: 400; text-align: left;
+    letter-spacing: .14em; padding: 0 8px 5px 0; border-bottom: 1px solid var(--ink);
+  }
+  .gantt td { padding: 9px 8px 9px 0; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  .gantt tbody tr { cursor: pointer; }
+  .gantt tbody tr:hover { background: #f3efe8; }
+  .gantt tbody tr[aria-selected="true"] { background: #f6ece9; }
+  .gantt td.t { font-family: var(--mincho); font-size: 13.5px; line-height: 1.45; }
+  .gantt td.t em { display: block; font-family: var(--gothic); font-style: normal;
+    font-size: 10px; color: var(--mute); letter-spacing: .04em; margin-top: 2px; }
+  .gantt td.n { text-align: right; font-size: 12px; color: var(--sub); white-space: nowrap; }
+  .track { position: relative; height: 14px; }
+  .track::after { content: ""; position: absolute; left: 0; right: 0; top: 6.5px; height: 1px; background: #e6e2da; }
+  .bar { position: absolute; top: 5.5px; height: 3px; background: #c2bab0; }
+  .bar.live { background: #e2a49f; }
+  .tick { position: absolute; top: 3.5px; width: 7px; height: 7px; border-radius: 50%; background: #6f6860; }
+  .tick.live { background: var(--accent); }
+  .kind { font-size: 9.5px; font-weight: 700; padding: 2px 6px; letter-spacing: .06em; white-space: nowrap; }
+  .k-steady { background: var(--accent); color: #fff; }
+  .k-developing { background: #f6ead2; color: #8a6410; border: 1px solid #e3d2ab; }
+  .k-spike { background: var(--ink); color: #fff; }
+  .k-unknown { background: #eae7e0; color: #5c564e; border: 1px solid var(--line); }
+  .long { font-size: 9px; color: var(--accent); letter-spacing: .1em; margin-left: 5px; }
+  @media (max-width: 640px) { .gantt col.c-track, .gantt th.h-track, .gantt td.c-track { display: none; } }
+
+  /* ── 記事リスト ── */
+  .arts { list-style: none; margin: 0; padding: 0; }
+  .arts li { padding: 11px 0; border-bottom: 1px solid var(--line); }
+  .arts .h { font-family: var(--mincho); font-size: 14.5px; line-height: 1.5; }
+  .arts .h a { text-decoration: none; border-bottom: 1px solid #cdc7bd; }
+  .arts .h a:hover { border-bottom-color: var(--accent); }
+  .arts .s { font-size: 12px; color: var(--sub); line-height: 1.7; margin-top: 3px; }
+  .arts .m { font-size: 10px; color: var(--mute); letter-spacing: .1em; margin-top: 4px; }
+  .arts .m .tp { color: var(--accent); font-weight: 700; margin-right: 8px; }
+
+  .daybar { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 4px; }
+  .daybar button {
+    font-family: var(--gothic); font-size: 11px; padding: 4px 9px; cursor: pointer;
+    background: #fff; border: 1px solid var(--line); color: var(--sub); border-radius: 0;
+  }
+  .daybar button[aria-selected="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .monthbar { margin-bottom: 10px; }
+  .monthbar button { font-family: var(--mincho); font-size: 12.5px; letter-spacing: .08em; padding: 5px 13px; }
+  .monthbar button[aria-selected="true"] { background: var(--accent); border-color: var(--accent); }
+
+  /* ── 地形 ── */
+  .terrain { width: 100%; overflow-x: auto; }
+  .terrain table { border-collapse: collapse; font-size: 11px; width: 100%; table-layout: fixed; min-width: 520px; }
+  .terrain col.lbl { width: 116px; }
+  .terrain th {
+    font-weight: 400; color: var(--sub); padding: 3px 9px 3px 0;
+    text-align: right; white-space: nowrap; font-family: var(--mincho);
+  }
+  .terrain th.wk { text-align: center; font-size: 9px; letter-spacing: 0; color: var(--mute); font-family: var(--gothic); padding: 0 0 4px; }
+  .terrain td { height: 26px; padding: 0; border: 2px solid var(--paper); }
+  .legend { display: flex; align-items: center; gap: 7px; font-size: 10.5px; color: var(--mute); margin-top: 12px; }
+  .legend i { display: inline-block; width: 22px; height: 12px; }
+
+  .muted { font-size: 12.5px; color: var(--mute); padding: 18px 0; }
+  .err { font-size: 13px; color: var(--accent); padding: 24px 0; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="sheet">
+
+  <div class="masthead">
+    <h1 class="name">朝刊エージェント便</h1>
+    <div class="sub">MORNING AGENT ／ 紙面</div>
+  </div>
+  <div class="colophon">
+    <span id="date">読み込み中…</span>
+    <span id="stat"></span>
+  </div>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" data-tab="flow" aria-selected="true">流れ</button>
+    <button role="tab" data-tab="today" aria-selected="false">今日の紙面</button>
+    <button role="tab" data-tab="archive" aria-selected="false">アーカイブ</button>
+    <button role="tab" data-tab="terrain" aria-selected="false">地形</button>
+    <span class="search"><input id="q" type="search" placeholder="全文検索（見出し・要約）" autocomplete="off"></span>
+  </div>
+
+  <div id="err" class="err" hidden></div>
+
+  <!-- 流れ -->
+  <section id="p-flow">
+    <div class="front">
+      <div>
+        <span class="kicker" id="kicker">いま続いている最長の流れ</span>
+        <h3 class="lead-title" id="lead-title"></h3>
+        <div class="lead-meta" id="lead-meta"></div>
+        <ul class="tl" id="lead-tl"></ul>
+      </div>
+      <div class="side">
+        <h2 class="sec" style="margin-top:0">きょう動いた話題 <small id="moved-n"></small></h2>
+        <ul class="moved" id="moved"></ul>
+      </div>
+    </div>
+
+    <h2 class="sec">続いている話題の経過 <small id="gantt-n"></small></h2>
+    <table class="gantt">
+      <colgroup><col><col style="width:64px"><col class="c-track" style="width:38%"><col style="width:46px"></colgroup>
+      <thead><tr>
+        <th>話題</th><th>型</th><th class="h-track" id="range"></th><th style="text-align:right">記事</th>
+      </tr></thead>
+      <tbody id="gantt"></tbody>
+    </table>
+  </section>
+
+  <!-- 今日の紙面 -->
+  <section id="p-today" hidden></section>
+
+  <!-- アーカイブ -->
+  <section id="p-archive" hidden>
+    <h2 class="sec">過去号 <small>月 → 日 の順に選ぶ</small></h2>
+    <div class="daybar monthbar" id="monthbar"></div>
+    <div class="daybar" id="daybar"></div>
+    <div id="archive-body"></div>
+  </section>
+
+  <!-- 地形 -->
+  <section id="p-terrain" hidden>
+    <h2 class="sec">地形 <small>分野 × 週ごとの記事数</small></h2>
+    <div class="terrain" id="terrain"></div>
+  </section>
+
+  <!-- 検索結果 -->
+  <section id="p-search" hidden>
+    <h2 class="sec">検索結果 <small id="search-n"></small></h2>
+    <ul class="arts" id="search-body"></ul>
+  </section>
+</div>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var esc = function (s) {
+    return String(s).replace(/[&<>"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    });
+  };
+  var D = null, ART = null, TOPIC = null;
+
+  var day = function (a, b) {
+    return Math.round((Date.parse(b + 'T00:00:00+09:00') - Date.parse(a + 'T00:00:00+09:00')) / 864e5);
+  };
+  var md = function (iso) { return Number(iso.slice(5, 7)) + '/' + Number(iso.slice(8, 10)); };
+  var jp = function (iso) {
+    var w = ['日', '月', '火', '水', '木', '金', '土'][new Date(iso + 'T12:00:00+09:00').getDay()];
+    return iso.slice(0, 4) + '年' + Number(iso.slice(5, 7)) + '月' + Number(iso.slice(8, 10)) + '日（' + w + '）';
+  };
+
+  fetch('data.json', { cache: 'no-cache' })
+    .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(init)
+    .catch(function (e) {
+      $('date').textContent = '';
+      $('err').hidden = false;
+      $('err').textContent = '紙面データを読み込めませんでした（' + e.message + '）。まだ生成されていない可能性があります。';
+    });
+
+  function init(d) {
+    D = d;
+    ART = {}; d.articles.forEach(function (a) { ART[a.id] = a; });
+    TOPIC = {}; d.topics.forEach(function (t) { TOPIC[t.id] = t.label; });
+
+    $('date').textContent = jp(d.lastDate);
+    $('stat').textContent = '観測' + d.days.length + '日目　記事' + d.articles.length +
+      '件　継続中の話題' + d.stories.filter(function (s) { return s.live; }).length + '本';
+    $('range').textContent = md(d.firstDate) + ' ─ ' + md(d.lastDate);
+
+    renderFlow(); renderToday(); renderArchive(); renderTerrain();
+  }
+
+  // ── タブ
+  var PANES = { flow: 'p-flow', today: 'p-today', archive: 'p-archive', terrain: 'p-terrain', search: 'p-search' };
+  function show(name) {
+    Object.keys(PANES).forEach(function (k) { $(PANES[k]).hidden = k !== name; });
+    Array.prototype.forEach.call(document.querySelectorAll('.tabs button'), function (b) {
+      b.setAttribute('aria-selected', String(b.dataset.tab === name));
+    });
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('.tabs button'), function (b) {
+    b.addEventListener('click', function () { $('q').value = ''; show(b.dataset.tab); });
+  });
+
+  // ── 流れ
+  function renderFlow() {
+    // 一面: 直近1週間に動きがあって、いちばん長く続いている話題
+    var cands = D.stories.filter(function (s) { return s.live && s.count >= 3; });
+    var lead = cands.sort(function (a, b) { return b.spanDays - a.spanDays; })[0] ||
+      D.stories.slice().sort(function (a, b) { return b.count - a.count; })[0];
+    if (lead) showStory(lead, 'いま続いている最長の流れ');
+
+    var last = D.lastDate;
+    var moved = [];
+    D.stories.forEach(function (s) {
+      if (s.firstSeen === last) moved.push({ k: '新規', c: 'b-new', s: s, n: (TOPIC[s.topic] || s.topic) + '　今日はじめて出た話題' });
+      else if (s.dates.indexOf(last) !== -1) moved.push({ k: '続報', c: 'b-cont', s: s, n: s.firstSeen + ' から ' + s.spanDays + '日目　通算' + s.count + '件' });
+    });
+    D.stories.forEach(function (s) {
+      if (day(s.lastSeen, last) === 8) moved.push({ k: '終了', c: 'b-end', s: s, n: s.lastSeen + ' を最後に1週間動きなし　通算' + s.count + '件' });
+    });
+    $('moved-n').textContent = moved.length ? moved.length + '件' : '';
+    $('moved').innerHTML = moved.length
+      ? moved.map(function (m) {
+          return '<li><span class="badge ' + m.c + '">' + m.k + '</span>' +
+            '<b data-story="' + esc(m.s.id) + '">' + esc(m.s.title) + '</b>' +
+            '<span class="note">' + esc(m.n) + '</span></li>';
+        }).join('')
+      : '<li class="muted">きょうは動きがありませんでした。</li>';
+
+    // 経過表: 記事3件以上を、直近に動いた順で
+    var rows = D.stories.filter(function (s) { return s.count >= 3; }).slice(0, 24);
+    $('gantt-n').textContent = '記事3件以上・' + rows.length + '本　／　赤＝直近1週間に動きあり';
+    var span = Math.max(1, day(D.firstDate, D.lastDate));
+    var pct = function (dt) { return 100 * day(D.firstDate, dt) / span; };
+
+    $('gantt').innerHTML = rows.map(function (s) {
+      var left = pct(s.firstSeen), w = Math.max(0.8, pct(s.lastSeen) - left);
+      var ticks = s.dates.map(function (dt) {
+        return '<span class="tick' + (s.live ? ' live' : '') + '" style="left:calc(' + pct(dt).toFixed(1) + '% - 3px)"></span>';
+      }).join('');
+      return '<tr data-story="' + esc(s.id) + '">' +
+        '<td class="t">' + esc(s.title) +
+          '<em>' + md(s.firstSeen) + '〜' + md(s.lastSeen) + '　' + s.spanDays + '日' +
+          (s.isLongRunning ? '<span class="long">長期</span>' : '') + '</em></td>' +
+        '<td><span class="kind k-' + s.kind + '">' + esc(s.kindLabel) + '</span></td>' +
+        '<td class="c-track"><div class="track"><div class="bar' + (s.live ? ' live' : '') +
+          '" style="left:' + left.toFixed(1) + '%;width:' + w.toFixed(1) + '%"></div>' + ticks + '</div></td>' +
+        '<td class="n">' + s.count + '</td></tr>';
+    }).join('');
+  }
+
+  /** 話題を一面に出す */
+  function showStory(s, kicker) {
+    $('kicker').textContent = kicker;
+    $('lead-title').textContent = s.title;
+    $('lead-meta').innerHTML =
+      '<span>初出 ' + s.firstSeen + '</span><span>直近 ' + s.lastSeen + '</span>' +
+      '<span><b>' + s.spanDays + '日間</b></span><span>記事 <b>' + s.count + '件</b></span>' +
+      '<span>' + esc(TOPIC[s.topic] || s.topic) + '</span><span>' + esc(s.kindLabel) + '</span>';
+
+    var items = s.articleIds.map(function (id) { return ART[id]; })
+      .filter(Boolean)
+      .sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+    $('lead-tl').innerHTML = items.length
+      ? items.map(function (a, i) {
+          var dim = i < items.length - 6 ? ' class="dim"' : '';
+          return '<li' + dim + '><span class="d">' + a.date + '</span>' +
+            '<a href="' + esc(a.url) + '" target="_blank" rel="noopener">' + esc(a.title) + '</a>' +
+            '<span class="sm">' + esc(a.summary) + '</span></li>';
+        }).join('')
+      : '<li class="muted">記事が見つかりませんでした。</li>';
+    Array.prototype.forEach.call($('gantt').querySelectorAll('tr'), function (tr) {
+      tr.setAttribute('aria-selected', String(tr.dataset.story === s.id));
+    });
+  }
+
+  // 経過表・動いた話題からの選択
+  document.addEventListener('click', function (e) {
+    var el = e.target.closest ? e.target.closest('[data-story]') : null;
+    if (!el || !D) return;
+    var s = D.stories.filter(function (x) { return x.id === el.dataset.story; })[0];
+    if (!s) return;
+    show('flow');
+    showStory(s, s.live ? '追っている流れ' : '止まっている流れ');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+
+  // ── 記事リストの共通描画
+  function artList(ids) {
+    var items = ids.map(function (id) { return ART[id]; }).filter(Boolean)
+      .sort(function (a, b) { return b.score - a.score; });
+    if (!items.length) return '<li class="muted">記事がありません。</li>';
+    return items.map(function (a) {
+      return '<li><div class="h"><a href="' + esc(a.url) + '" target="_blank" rel="noopener">' +
+        esc(a.title) + '</a></div><div class="s">' + esc(a.summary) + '</div>' +
+        '<div class="m"><span class="tp">' + esc(TOPIC[a.topic] || a.topic) + '</span>' +
+        '重要度 ' + '●'.repeat(a.score) + '○'.repeat(Math.max(0, 5 - a.score)) + '　' + a.date + '</div></li>';
+    }).join('');
+  }
+
+  // ── 今日の紙面
+  function renderToday() {
+    var d = D.days[D.days.length - 1];
+    if (!d) { $('p-today').innerHTML = '<div class="muted">まだありません。</div>'; return; }
+    var picks = d.picks && d.picks.length
+      ? '<h2 class="sec">今日の注目</h2><ul class="arts">' + d.picks.map(function (p) {
+          return '<li><div class="h">' + esc(p.title) + '</div><div class="s">' + esc(p.comment) + '</div></li>';
+        }).join('') + '</ul>'
+      : '';
+    $('p-today').innerHTML = '<h2 class="sec">' + jp(d.date) + ' <small>' + d.articleIds.length + '件</small></h2>' +
+      picks + '<ul class="arts">' + artList(d.articleIds) + '</ul>';
+  }
+
+  // ── アーカイブ（月 → 日 の2段。1年分でも日のボタンが31個で収まる）
+  function renderArchive() {
+    var days = D.days.slice().reverse();
+    if (!days.length) { $('archive-body').innerHTML = '<div class="muted">まだありません。</div>'; return; }
+
+    var months = [];
+    days.forEach(function (d) {
+      var m = d.date.slice(0, 7);
+      if (months.indexOf(m) === -1) months.push(m);
+    });
+
+    $('monthbar').innerHTML = months.map(function (m, i) {
+      return '<button data-month="' + m + '" aria-selected="' + (i === 0) + '">' +
+        m.slice(0, 4) + '年' + Number(m.slice(5, 7)) + '月</button>';
+    }).join('');
+    $('monthbar').addEventListener('click', function (e) {
+      var b = e.target.closest('button');
+      if (!b) return;
+      select($('monthbar'), b);
+      showMonth(b.dataset.month);
+    });
+    $('daybar').addEventListener('click', function (e) {
+      var b = e.target.closest('button');
+      if (!b) return;
+      select($('daybar'), b);
+      showDay(b.dataset.day);
+    });
+
+    showMonth(months[0]);
+
+    function showMonth(m) {
+      var inMonth = days.filter(function (d) { return d.date.slice(0, 7) === m; });
+      $('daybar').innerHTML = inMonth.map(function (d, i) {
+        return '<button data-day="' + d.date + '" aria-selected="' + (i === 0) + '">' +
+          Number(d.date.slice(8, 10)) + '日</button>';
+      }).join('');
+      if (inMonth[0]) showDay(inMonth[0].date);
+    }
+  }
+  function select(bar, btn) {
+    Array.prototype.forEach.call(bar.querySelectorAll('button'), function (x) {
+      x.setAttribute('aria-selected', String(x === btn));
+    });
+  }
+  function showDay(date) {
+    var d = D.days.filter(function (x) { return x.date === date; })[0];
+    if (!d) return;
+    $('archive-body').innerHTML = '<h2 class="sec">' + jp(d.date) + ' <small>' + d.articleIds.length +
+      '件</small></h2><ul class="arts">' + artList(d.articleIds) + '</ul>';
+  }
+
+  // ── 地形（分野 × 週）
+  function renderTerrain() {
+    var weeks = [], index = {};
+    D.days.forEach(function (d) {
+      var w = weekStart(d.date);
+      if (!(w in index)) { index[w] = weeks.length; weeks.push(w); }
+    });
+    var grid = {};
+    D.topics.forEach(function (t) { grid[t.id] = weeks.map(function () { return 0; }); });
+    D.days.forEach(function (d) {
+      var wi = index[weekStart(d.date)];
+      d.articleIds.forEach(function (id) {
+        var a = ART[id];
+        if (a && grid[a.topic]) grid[a.topic][wi]++;
+      });
+    });
+    var max = 1;
+    Object.keys(grid).forEach(function (k) {
+      grid[k].forEach(function (v) { if (v > max) max = v; });
+    });
+
+    // 週が増えても列だけ増えて縦は伸びない。1年で52列
+    var cols = '<colgroup><col class="lbl">' + weeks.map(function () { return '<col>'; }).join('') + '</colgroup>';
+    var head = '<tr><th></th>' + weeks.map(function (w) {
+      return '<th class="wk">' + md(w) + '</th>';
+    }).join('') + '</tr>';
+    var body = D.topics.map(function (t) {
+      return '<tr><th>' + esc(t.label) + '</th>' + grid[t.id].map(function (v, i) {
+        var o = v === 0 ? 0.04 : 0.12 + 0.88 * (v / max);
+        return '<td style="background:rgba(168,26,18,' + o.toFixed(2) + ')" title="' + esc(t.label) +
+          '　' + weeks[i] + 'の週　' + v + '件"></td>';
+      }).join('') + '</tr>';
+    }).join('');
+    var steps = [0, 0.25, 0.5, 0.75, 1].map(function (r) {
+      var o = r === 0 ? 0.04 : 0.12 + 0.88 * r;
+      return '<i style="background:rgba(168,26,18,' + o.toFixed(2) + ')"></i>';
+    }).join('');
+    $('terrain').innerHTML = '<table>' + cols + head + body + '</table>' +
+      '<div class="legend">少ない ' + steps + ' 多い　（最大 ' + max + '件/週）</div>';
+  }
+  function weekStart(iso) {
+    var d = new Date(iso + 'T12:00:00+09:00');
+    d.setDate(d.getDate() - d.getDay());
+    return d.toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' });
+  }
+
+  // ── 全文検索
+  var timer = null;
+  $('q').addEventListener('input', function () {
+    clearTimeout(timer);
+    timer = setTimeout(runSearch, 120);
+  });
+  function runSearch() {
+    var q = $('q').value.trim();
+    if (!q) { show('flow'); return; }
+    if (!D) return;
+    var lower = q.toLowerCase();
+    var hits = D.articles.filter(function (a) {
+      return (a.title + a.summary).toLowerCase().indexOf(lower) !== -1;
+    }).sort(function (a, b) { return a.date < b.date ? 1 : -1; });
+    $('search-n').textContent = hits.length + '件';
+    $('search-body').innerHTML = hits.length
+      ? hits.map(function (a) {
+          return '<li><div class="h"><a href="' + esc(a.url) + '" target="_blank" rel="noopener">' +
+            esc(a.title) + '</a></div><div class="s">' + esc(a.summary) + '</div>' +
+            '<div class="m"><span class="tp">' + esc(TOPIC[a.topic] || a.topic) + '</span>' + a.date + '</div></li>';
+        }).join('')
+      : '<li class="muted">見つかりませんでした。</li>';
+    show('search');
+  }
+})();
+</script>
+</body>
+</html>

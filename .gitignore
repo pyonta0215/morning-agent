@@ -12,3 +12,6 @@ eval-results/
 
 # バックフィル実験の作業ディレクトリ
 .local/
+
+# ローカルのサイトプレビュー設定（.local/site を配るだけのもの）
+.claude/launch.json

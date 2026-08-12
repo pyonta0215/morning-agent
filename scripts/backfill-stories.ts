@@ -29,8 +29,15 @@ import { catchAllWarnings } from '../src/utils/storyMetrics.js';
 import { storyTopicIds } from '../src/config/settings.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// .env は丸ごと流し込まない。中の AWS_ACCESS_KEY_ID（SES用）が ~/.aws のプロファイルより
+// 優先されてしまい、バケットの権限が足りずに必ず失敗するため、必要なキーだけ取る
 const envPath = path.resolve(__dirname, '../.env');
-if (fs.existsSync(envPath)) dotenv.config({ path: envPath });
+const envFile = fs.existsSync(envPath)
+  ? dotenv.parse(fs.readFileSync(envPath))
+  : ({} as Record<string, string>);
+if (!process.env.ANTHROPIC_API_KEY && envFile.ANTHROPIC_API_KEY) {
+  process.env.ANTHROPIC_API_KEY = envFile.ANTHROPIC_API_KEY;
+}
 
 const args = process.argv.slice(2);
 function arg(name: string): string | undefined {
@@ -65,10 +72,10 @@ function loadArchivesFromCache(): RunArchive[] {
 async function loadArchives(): Promise<RunArchive[]> {
   if (localOnly) return loadArchivesFromCache();
   fs.mkdirSync(cacheDir, { recursive: true });
-  const bucket = process.env.STORAGE_BUCKET;
+  const bucket = process.env.STORAGE_BUCKET ?? envFile.STORAGE_BUCKET;
   if (!bucket) throw new Error('STORAGE_BUCKET が未設定です');
 
-  const s3 = new S3Client({ region: process.env.AWS_REGION ?? 'ap-northeast-1' });
+  const s3 = new S3Client({ region: process.env.AWS_REGION ?? envFile.AWS_REGION ?? 'ap-northeast-1' });
   const keys = await listRunArchiveKeys(s3, bucket);
   const out: RunArchive[] = [];
 

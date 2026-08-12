@@ -8,7 +8,9 @@
  *   AWS_REGION=ap-northeast-1 npx tsx scripts/story-ledger-push.ts
  *   AWS_REGION=ap-northeast-1 npx tsx scripts/story-ledger-push.ts --force
  *
- * 注意: `.env` の SES 用キーではバケットの権限が足りない。~/.aws の既定プロファイルで実行すること。
+ * 認証は ~/.aws の既定プロファイルを使う。`.env` に入っている SES 用のキーでは
+ * バケットの権限が足りないので、**`.env` からは STORAGE_BUCKET だけを読む**
+ * （dotenv.config で丸ごと流し込むと AWS_ACCESS_KEY_ID がプロファイルより優先されて必ず失敗する）。
  */
 import * as path from 'path';
 import * as fs from 'fs';
@@ -20,7 +22,10 @@ import { loadStoryLedger, saveStoryLedger, storyLedgerExists } from '../src/util
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const envPath = path.resolve(__dirname, '../.env');
-if (fs.existsSync(envPath)) dotenv.config({ path: envPath });
+const envFile = fs.existsSync(envPath)
+  ? dotenv.parse(fs.readFileSync(envPath))
+  : ({} as Record<string, string>);
+const STORAGE_BUCKET = process.env.STORAGE_BUCKET ?? envFile.STORAGE_BUCKET;
 
 const args = process.argv.slice(2);
 const force = args.includes('--force');
@@ -31,7 +36,7 @@ const ledgerPath = path.resolve(
 );
 
 async function main(): Promise<void> {
-  const bucket = process.env.STORAGE_BUCKET;
+  const bucket = STORAGE_BUCKET;
   if (!bucket) throw new Error('STORAGE_BUCKET が未設定です');
 
   const local = JSON.parse(fs.readFileSync(ledgerPath, 'utf-8')) as StoryLedger;
@@ -41,7 +46,7 @@ async function main(): Promise<void> {
       `  ストーリー ${local.stories.length}本 / ${dates[0]} 〜 ${dates[dates.length - 1]} (${dates.length}日)`
   );
 
-  const s3 = new S3Client({ region: process.env.AWS_REGION ?? 'ap-northeast-1' });
+  const s3 = new S3Client({ region: process.env.AWS_REGION ?? envFile.AWS_REGION ?? 'ap-northeast-1' });
   const exists = await storyLedgerExists(s3, bucket);
 
   if (exists) {
