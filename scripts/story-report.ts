@@ -3,7 +3,7 @@
  *
  * 出す数字:
  *   - ストーリー数と1記事ストーリーの比率（割当プロンプトが機能しているかの判定）
- *   - 型判定（steady/spike/smoldering/developing/unknown）の分布
+ *   - 型判定（継続中/一時的/発生中/単発）の分布と、長期フラグ
  *   - 上位ストーリーの目視用一覧（無内容な受け皿になっていないかの確認）
  *   - 日次の変化（新規 / steady昇格 / dormant化）← メールを「変化の通知」にできるかの判断材料
  *
@@ -13,7 +13,14 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { fileURLToPath } from 'url';
 import type { StoryLedger } from '../src/utils/storyLedger.js';
-import { stats, dailyChanges, type StoryKind } from '../src/utils/storyMetrics.js';
+import {
+  stats,
+  dailyChanges,
+  catchAllWarnings,
+  KIND_LABEL,
+  CATCH_ALL_SHARE,
+  type StoryKind,
+} from '../src/utils/storyMetrics.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
@@ -35,16 +42,22 @@ console.log(`1記事のみ     ${singletons.length}本 (${((100 * singletons.len
 console.log(`平均記事数    ${(totalArticles / stories.length).toFixed(2)}件/本`);
 
 console.log('\n=== 型判定の分布 ===');
-const kinds: Record<StoryKind, number> = {
-  steady: 0, spike: 0, smoldering: 0, developing: 0, unknown: 0,
-};
+const kinds: Record<StoryKind, number> = { steady: 0, spike: 0, developing: 0, unknown: 0 };
+let longRunning = 0;
 for (const s of stories) {
   const st = stats(s);
-  if (st) kinds[st.kind]++;
+  if (!st) continue;
+  kinds[st.kind]++;
+  if (st.isLongRunning) longRunning++;
 }
 for (const [k, n] of Object.entries(kinds)) {
-  console.log(`${k.padEnd(12)} ${String(n).padStart(4)}本 (${((100 * n) / stories.length).toFixed(1)}%)`);
+  console.log(
+    `${k.padEnd(12)} ${KIND_LABEL[k as StoryKind].padEnd(5)} ${String(n).padStart(4)}本 (${((100 * n) / stories.length).toFixed(1)}%)`
+  );
 }
+console.log(
+  `${'(長期)'.padEnd(12)} ${'14日以上'.padEnd(3)} ${String(longRunning).padStart(4)}本 (${((100 * longRunning) / stories.length).toFixed(1)}%) ※kindと直交`
+);
 
 console.log('\n=== トピック別 ===');
 const byTopic = new Map<string, { n: number; articles: number }>();
@@ -55,7 +68,25 @@ for (const s of stories) {
   byTopic.set(s.topic, e);
 }
 for (const [t, e] of [...byTopic].sort((a, b) => b[1].articles - a[1].articles)) {
-  console.log(`${t.padEnd(12)} ストーリー${String(e.n).padStart(4)}本 / 記事${String(e.articles).padStart(4)}件 (${(e.articles / e.n).toFixed(2)}件/本)`);
+  const inTopic = stories.filter((s) => s.topic === t);
+  const maxShare = Math.max(...inTopic.map((s) => s.articleIds.length)) / e.articles;
+  const single = inTopic.filter((s) => s.articleIds.length === 1).length;
+  console.log(
+    `${t.padEnd(12)} ストーリー${String(e.n).padStart(4)}本 / 記事${String(e.articles).padStart(4)}件 (${(e.articles / e.n).toFixed(2)}件/本)` +
+      ` / 最大ストーリー占有率 ${(100 * maxShare).toFixed(0)}% / 1記事のみ ${((100 * single) / e.n).toFixed(0)}%`
+  );
+}
+
+console.log(`\n=== 受け皿化の疑い（トピック内 ${(100 * CATCH_ALL_SHARE).toFixed(0)}% 超） ===`);
+const warnings = catchAllWarnings(ledger);
+if (warnings.length === 0) {
+  console.log('なし');
+} else {
+  for (const w of warnings) {
+    console.log(
+      `${w.storyId} [${w.topic}] ${w.articleCount}/${w.topicTotal}件 (${(100 * w.share).toFixed(0)}%) ${w.title}`
+    );
+  }
 }
 
 console.log('\n=== 記事数の多いストーリー 上位20（受け皿化していないかの目視用） ===');

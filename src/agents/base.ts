@@ -29,6 +29,11 @@ export interface Topic {
   keywords: string[];
   /** true のトピックのみ web_search による鮮度補強を行う */
   webSearch?: boolean;
+  /**
+   * true のトピックのみストーリー台帳の対象にする（既定 false）。
+   * 「継続する話題」として成立するトピックだけに絞る。判断根拠は topics.yaml のコメント。
+   */
+  story?: boolean;
   /** research-hub による補強（ENABLE_RESEARCH_HUB=true のときのみ有効） */
   research?: ResearchSpec;
 }

@@ -1,6 +1,18 @@
 topics:
+  # story: ストーリー台帳（継続する話題の追跡）の対象にするか。既定 false。
+  # 2026-08-11 のバックフィル実測で、トピックによって「続報が積み上がるか」が大きく違った。
+  #   最大ストーリーの占有率 / 1記事だけのストーリー比率
+  #   jp_politics 21% / 72%  → 成立する（皇位継承の論点提示→骨子案→閣議決定→国会提出が1本に繋がった）
+  #   ai          22% / 68%  → 成立する
+  #   game        51% / 67%  → 受け皿化。1本に無関係な新作情報が吸い込まれた
+  #   finance     65% / 58%  → 「話題」でなく定点観測（日経平均・NISA）。日々の値動きに続報の構造がない
+  #   paper       8%  / 93%  → arXiv論文は継続報道されない
+  # これは「game と finance に流れが無い」という主張ではなく、いまのトピック粒度では
+  # ストーリーとして成立しないという判断。トピックを細分化すれば将来また true にできる。
+  # story: false のトピックも紙面には従来どおり載る（台帳に載らないだけ）。
   - id: ai
     label: AI・LLM
+    story: true
     # webSearch補強は2週間観測（6/22-7/3実測）で良質な純寄与0のため無効化（2026-07-03）。
     # 供給はfetch（Google News/RSS）が鮮度・質とも上位互換。再有効化は webSearch: true を戻すだけ。
     keywords: [Claude, GPT, Gemini, LLM, 生成AI]
@@ -40,6 +52,7 @@ topics:
 
   - id: jp_politics
     label: 政治・行政
+    story: true
     keywords: [政治, 政策, 内閣, 官邸, 法案, 省庁, デジタル庁]
     urls:
       - https://www3.nhk.or.jp/rss/news/cat4.xml

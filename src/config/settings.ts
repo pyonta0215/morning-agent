@@ -23,11 +23,16 @@ function getTopicsDir(): string {
   return path.dirname(fileURLToPath(import.meta.url));
 }
 
-function loadTopics(): Topic[] {
+export function loadTopics(): Topic[] {
   const yamlPath = path.resolve(getTopicsDir(), 'topics.yaml');
   const raw = fs.readFileSync(yamlPath, 'utf-8');
   const parsed = yaml.load(raw) as TopicsYaml;
   return parsed.topics;
+}
+
+/** ストーリー台帳の対象トピックid。topics.yaml の `story: true` のものだけ */
+export function storyTopicIds(topics: Topic[] = loadTopics()): Set<string> {
+  return new Set(topics.filter((t) => t.story).map((t) => t.id));
 }
 
 export interface FullConfig extends AppConfig {

@@ -25,6 +25,8 @@ import {
   type StoryLedger,
 } from '../src/utils/storyLedger.js';
 import { assignArticlesToStories, type AssignableArticle } from '../src/agents/storyAgent.js';
+import { catchAllWarnings } from '../src/utils/storyMetrics.js';
+import { storyTopicIds } from '../src/config/settings.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const envPath = path.resolve(__dirname, '../.env');
@@ -36,13 +38,32 @@ function arg(name: string): string | undefined {
   return i !== -1 ? args[i + 1] : undefined;
 }
 const dryRun = args.includes('--dry-run');
+/** S3を読まず、キャッシュ済みのアーカイブだけで走る。.env のSESキーではS3権限が無いため既定にしたい場面が多い */
+const localOnly = args.includes('--local');
 const from = arg('from');
 const to = arg('to');
 const outPath = path.resolve(arg('out') ?? path.join(__dirname, '../.local/stories.json'));
 const cacheDir = path.resolve(arg('cache') ?? path.join(__dirname, '../.local/archive'));
 
+function inRange(archive: RunArchive): boolean {
+  if (from && archive.isoDate < from) return false;
+  if (to && archive.isoDate > to) return false;
+  return true;
+}
+
+/** キャッシュ済みのアーカイブだけで走る（--local）。S3の認証も通信も要らない */
+function loadArchivesFromCache(): RunArchive[] {
+  return fs
+    .readdirSync(cacheDir)
+    .filter((f) => f.endsWith('.json'))
+    .map((f) => JSON.parse(fs.readFileSync(path.join(cacheDir, f), 'utf-8')) as RunArchive)
+    .filter(inRange)
+    .sort((a, b) => (a.isoDate < b.isoDate ? -1 : 1));
+}
+
 /** アーカイブをローカルにキャッシュしてから読む（再実行でS3を叩き直さない） */
 async function loadArchives(): Promise<RunArchive[]> {
+  if (localOnly) return loadArchivesFromCache();
   fs.mkdirSync(cacheDir, { recursive: true });
   const bucket = process.env.STORAGE_BUCKET;
   if (!bucket) throw new Error('STORAGE_BUCKET が未設定です');
@@ -61,22 +82,26 @@ async function loadArchives(): Promise<RunArchive[]> {
       if (archive) fs.writeFileSync(local, JSON.stringify(archive));
     }
     if (!archive) continue;
-    if (from && archive.isoDate < from) continue;
-    if (to && archive.isoDate > to) continue;
+    if (!inRange(archive)) continue;
     out.push(archive);
   }
   return out.sort((a, b) => (a.isoDate < b.isoDate ? -1 : 1));
 }
 
+// 台帳に載せるのは topics.yaml で story: true のトピックだけ（判断根拠は topics.yaml のコメント）
+const STORY_TOPICS = storyTopicIds();
+
 function toArticles(archive: RunArchive): AssignableArticle[] {
-  return Object.entries(archive.byTopic).flatMap(([topic, items]) =>
-    items.map((i) => ({
-      id: articleId(i.url),
-      title: i.title,
-      summary: i.summary,
-      topic,
-    }))
-  );
+  return Object.entries(archive.byTopic)
+    .filter(([topic]) => STORY_TOPICS.has(topic))
+    .flatMap(([topic, items]) =>
+      items.map((i) => ({
+        id: articleId(i.url),
+        title: i.title,
+        summary: i.summary,
+        topic,
+      }))
+    );
 }
 
 async function main(): Promise<void> {
@@ -85,6 +110,7 @@ async function main(): Promise<void> {
   console.log(
     `対象: ${archives.length}日 (${archives[0]?.isoDate} 〜 ${archives[archives.length - 1]?.isoDate}) / 記事 ${totalArticles}件`
   );
+  console.log(`対象トピック: ${[...STORY_TOPICS].join(', ')}\n`);
 
   if (dryRun) {
     for (const a of archives) console.log(`  ${a.isoDate}  記事${toArticles(a).length}件`);
@@ -100,6 +126,7 @@ async function main(): Promise<void> {
   const done = new Set(ledger.stories.flatMap((s) => Object.keys(s.dailyCounts)));
 
   let cost = 0;
+  const warned = new Set<string>();
   for (const archive of archives) {
     if (done.has(archive.isoDate)) {
       console.log(`  ${archive.isoDate}  skip (処理済み)`);
@@ -116,8 +143,21 @@ async function main(): Promise<void> {
     console.log(
       `  ${archive.isoDate}  記事${articles.length}件 → 既存${r.assigned} 新規${r.created}` +
         (r.rejectedCrossTopic > 0 ? ` (トピック跨ぎ差戻し${r.rejectedCrossTopic})` : '') +
+        (r.mergedByTitle > 0 ? ` (同名寄せ${r.mergedByTitle})` : '') +
+        `  候補${r.candidatesBefore}→${r.candidatesAfter}本` +
         `  累計ストーリー${ledger.stories.length}本  $${cost.toFixed(4)}`
     );
+
+    // 受け皿化はその場で気づけないと最後まで走ってから作り直しになる
+    for (const w of catchAllWarnings(ledger)) {
+      if (!warned.has(w.storyId)) {
+        warned.add(w.storyId);
+        console.log(
+          `    ⚠ 受け皿化の疑い: ${w.storyId} [${w.topic}] 「${w.title}」` +
+            ` ${w.articleCount}/${w.topicTotal}件 (${(100 * w.share).toFixed(0)}%)`
+        );
+      }
+    }
 
     fs.mkdirSync(path.dirname(outPath), { recursive: true });
     fs.writeFileSync(outPath, JSON.stringify(ledger, null, 2));
@@ -125,6 +165,18 @@ async function main(): Promise<void> {
 
   console.log(`\n台帳: ${outPath}`);
   console.log(`ストーリー ${ledger.stories.length}本 / 総コスト $${cost.toFixed(4)}`);
+
+  const finalWarnings = catchAllWarnings(ledger);
+  if (finalWarnings.length === 0) {
+    console.log('受け皿化の疑いがあるストーリー: なし');
+  } else {
+    console.log(`受け皿化の疑い ${finalWarnings.length}本:`);
+    for (const w of finalWarnings) {
+      console.log(
+        `  ${w.storyId} [${w.topic}] 「${w.title}」 ${w.articleCount}/${w.topicTotal}件 (${(100 * w.share).toFixed(0)}%)`
+      );
+    }
+  }
 }
 
 main().catch((err) => {
