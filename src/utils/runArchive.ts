@@ -57,6 +57,48 @@ export async function saveRunArchive(
   );
 }
 
+/** 日付と版を指定して1件読む。フェーズを跨いで同じ日のアーカイブを参照するのに使う */
+export async function loadRunArchiveFor(
+  s3: S3Client,
+  bucket: string,
+  isoDate: string,
+  edition: 'morning' | 'evening'
+): Promise<RunArchive | null> {
+  return loadRunArchive(s3, bucket, archiveKey(isoDate, edition));
+}
+
+/**
+ * 編集長が選んだ注目記事を、あとから書き足す。
+ *
+ * アーカイブは生データとして不変に保つのが原則だが、picks だけは例外。
+ * 3フェーズに分けた結果、picks を決めるのは notify フェーズになり、
+ * アーカイブを書く collect フェーズの時点ではまだ存在しないため。
+ * **書き換えるのは picks だけで、sources と byTopic には触れない**
+ * （評価ハーネスのゴールデンセット原料はこの2つ）。
+ */
+export async function updateRunArchivePicks(
+  s3: S3Client,
+  bucket: string,
+  isoDate: string,
+  edition: 'morning' | 'evening',
+  picks: Array<{ title: string; comment: string }>
+): Promise<void> {
+  const archive = await loadRunArchiveFor(s3, bucket, isoDate, edition);
+  if (!archive) {
+    console.warn(`[runArchive] picks を書き戻す対象が見つからない: ${isoDate}-${edition}`);
+    return;
+  }
+  archive.picks = picks;
+  await s3.send(
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: archiveKey(isoDate, edition),
+      Body: JSON.stringify(archive),
+      ContentType: 'application/json',
+    })
+  );
+}
+
 /** アーカイブのS3キー一覧を日付昇順で返す */
 export async function listRunArchiveKeys(s3: S3Client, bucket: string): Promise<string[]> {
   const keys: string[] = [];

@@ -178,19 +178,28 @@ MCP プロトコルは介さず、service 層（`search` / `trending`）を直�
 
 ## 動作フロー
 
+Lambda は1本で、EventBridge Scheduler から `phase` を変えて3回呼ばれる。
+**依存の向きは一方向で、後ろのフェーズが前のフェーズを知らない。**
+
 ```
-EventBridge Scheduler (毎朝 JST 07:00)
-    ↓
-Lambda handler (src/index.ts)
-    ↓
-Pipeline.collect phase — 並列実行
-    └─ WebAgent: topics.yaml の URL を fetch_webpage ツールで収集
-                 → Claude がトピック別に重要度スコア付きで集約
-    ↓
-Pipeline.compose phase — 直列実行
-    └─ ComposerAgent: 収集結果を Claude でメール本文に整形
-                      → SES でメール送信
+6:15 JST  phase: collect   ★ メールを知らない
+  WebAgent: topics.yaml の URL / Google News / research-hub から収集
+            → Claude がトピック別に重要度スコア付きで集約（LLM 1回目）
+  → archive/YYYY-MM-DD-morning.json   生データ。失うと復元できない
+  → stories/index.json                ストーリー台帳（LLM 2回目）
+  → delivered/                        配信済み履歴（14日で回る）
+
+6:25 JST  phase: publish   ★ メールを知らない
+  archive + stories → 閲覧サイトのファイルを決定的に組み立てて置く（LLMなし）
+
+6:30 JST  phase: notify    ★ 蓄積を読むだけ
+  その日の archive → ComposerAgent が文面を作成 → SES で送信
 ```
+
+分けている理由は、**蓄積は止めてはいけないが、紙面とメールは1日落ちても取り返せる**から。
+一体にしておくと「メールの見た目を直したいだけなのに収集をやり直す」ことになる。
+
+ローカルで通しで動かすときは `phase` を付けずに呼べば3つ順に走る（`DRY_RUN=true` で送信を抑止）。
 
 ## トピック設定
 

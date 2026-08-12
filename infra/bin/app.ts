@@ -34,5 +34,4 @@ new MorningAgentSiteStack(app, 'MorningAgentSiteStack', {
   zoneName: 'imai.me',
   hostedZoneId: 'Z07967483MFT3YWEGWUGM',
   siteBucketName: SITE_BUCKET_NAME,
-  publisherRoleArn: `arn:aws:iam::${account}:role/${LAMBDA_ROLE_NAME}`,
 });

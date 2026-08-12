@@ -27,7 +27,8 @@ export class MorningAgentLambdaStack extends cdk.Stack {
       versioned: true,
       lifecycleRules: [
         {
-          // メール中間データ: 送信漏れで残ったオブジェクトを1日後に自動削除
+          // 3フェーズ分離でメールの中間保存は不要になった（notify がアーカイブから直接作る）。
+          // 過去に書かれた pending/ を掃除するためだけに残している
           prefix: 'pending/',
           expiration: cdk.Duration.days(1),
         },

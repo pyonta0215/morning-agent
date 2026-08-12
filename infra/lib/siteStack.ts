@@ -5,7 +5,6 @@ import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as targets from 'aws-cdk-lib/aws-route53-targets';
 import * as s3 from 'aws-cdk-lib/aws-s3';
-import * as iam from 'aws-cdk-lib/aws-iam';
 import { Construct } from 'constructs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -18,8 +17,6 @@ export interface SiteStackProps extends cdk.StackProps {
   /** 親ゾーン（例: imai.me） */
   readonly zoneName: string;
   readonly hostedZoneId: string;
-  /** サイトへ書き込む Lambda のロールARN。別リージョンの別スタックにあるため文字列で渡す */
-  readonly publisherRoleArn: string;
   /** バケット名。lambdaStack 側が同じ名前を literal で参照するため固定する */
   readonly siteBucketName: string;
 }
@@ -36,7 +33,8 @@ export interface SiteStackProps extends cdk.StackProps {
  *
  * CloudFront の証明書は us-east-1 にしか置けないため、このスタックごと us-east-1 に置く。
  * 書き込む Lambda は ap-northeast-1 にあるので、スタックを跨いだ参照を作らずに済むよう
- * バケット名を固定し、権限はバケットポリシーでロールARNを直接許可する。
+ * バケット名を固定し、書き込み許可は Lambda 側のIDベースのポリシーだけで与える
+ * （同一アカウントならバケットポリシーは要らない。詳細は下のコメント）。
  *
  * キャッシュ無効化（CreateInvalidation）は使わない。サイトの更新は1日1回で、
  * オリジン側の Cache-Control を短くしておけば足りる。無効化は月1,000件を超えると
@@ -126,16 +124,11 @@ export class MorningAgentSiteStack extends cdk.Stack {
       ],
     });
 
-    // 書き込みは ap-northeast-1 の Lambda から。クロスリージョンのスタック参照を
-    // 作らずに済むよう、ロールARNを文字列で受けてバケットポリシーに直接書く
-    bucket.addToResourcePolicy(
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        principals: [new iam.ArnPrincipal(props.publisherRoleArn)],
-        actions: ['s3:PutObject', 's3:DeleteObject', 's3:GetObject', 's3:ListBucket'],
-        resources: [bucket.bucketArn, `${bucket.bucketArn}/*`],
-      })
-    );
+    // 書き込みは ap-northeast-1 の Lambda から。**バケットポリシーは書かない。**
+    // 同一アカウントならIDベースのポリシー（lambdaStack 側）だけで通るうえ、
+    // ここにロールARNを書くとロールが先に存在しないとスタックが作れなくなる
+    // （S3 はポリシー作成時にプリンシパルの実在を検証する。実際に一度これで失敗した）。
+    // スタックの作成順に依存しないよう、許可は Lambda 側に片寄せしている。
 
     new route53.ARecord(this, 'ARecord', {
       zone,
