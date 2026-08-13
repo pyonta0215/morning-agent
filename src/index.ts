@@ -6,14 +6,8 @@ import { SesClient } from './clients/sesClient.js';
 import { Pipeline } from './orchestrator/pipeline.js';
 import { WebAgent } from './agents/webAgent.js';
 import type { WebAgentData, WebItem } from './agents/webAgent.js';
-import { ComposerAgent, formatDateJST } from './agents/composerAgent.js';
-import type { AgentInput, AgentOutput } from './agents/base.js';
-import {
-  saveEditorialContext,
-  loadEditorialContext,
-  buildEditorialContext,
-  getJSTIsoDate,
-} from './utils/editorialContext.js';
+import type { AgentInput } from './agents/base.js';
+import { getJSTIsoDate, formatDateJST } from './utils/date.js';
 import {
   loadDeliveredHistory,
   saveDeliveredHistory,
@@ -25,7 +19,6 @@ import {
   loadRunArchive,
   loadRunArchiveFor,
   listRunArchiveKeys,
-  updateRunArchivePicks,
   type RunArchive,
 } from './utils/runArchive.js';
 import { buildSiteFiles } from './site/siteData.js';
@@ -33,7 +26,9 @@ import { getSiteS3Client, publishSiteFiles, collectStaticFiles } from './site/pu
 import { loadStoryLedger, saveStoryLedger } from './utils/storyStore.js';
 import { articleId } from './utils/storyLedger.js';
 import { assignArticlesToStories, type AssignableArticle } from './agents/storyAgent.js';
-import { catchAllWarnings } from './utils/storyMetrics.js';
+import { catchAllWarnings, movedStories } from './utils/storyMetrics.js';
+import { loadNote } from './utils/notes.js';
+import { buildMorningEmail } from './email/morningEmail.js';
 
 function getS3Client(region: string): S3Client {
   return new S3Client({ region });
@@ -158,7 +153,7 @@ async function runCollectPhaseFor(traceId: string, edition: 'morning' | 'evening
   const webData = results.find((r) => r.agentId === 'web')?.data as WebAgentData | undefined;
   if (!webData) throw new Error('[index] WebAgent did not return data');
 
-  // 実行アーカイブ。picks は notify フェーズで決まるのであとから書き足す
+  // 実行アーカイブ。picks は「今日の注目」を廃止したので常に空（旧データとの互換で型は残す）
   await saveRunArchive(s3, bucket, {
     isoDate: todayIso,
     edition,
@@ -273,8 +268,8 @@ async function runNotifyPhaseFor(traceId: string, edition: 'morning' | 'evening'
   const sesClient = new SesClient(config.sesRegion);
   const dryRun = process.env.DRY_RUN === 'true';
   const s3 = getS3Client(config.awsRegion);
-  const enhancedEditorial = process.env.ENHANCED_EDITORIAL === 'true';
   const editionLabel = edition === 'evening' ? '夕刊' : '朝刊';
+  const paperUrl = `${process.env.SITE_URL ?? 'https://news.imai.me'}/paper/`;
 
   const now = new Date();
   const todayIso = getJSTIsoDate(now);
@@ -296,79 +291,44 @@ async function runNotifyPhaseFor(traceId: string, edition: 'morning' | 'evening'
     return;
   }
 
-  // 前回配信コンテキスト（ENHANCED_EDITORIAL=true 時）
-  // 夕刊: 同日朝刊 / 朝刊: 前日夕刊（なければ前日朝刊）
   const yesterday = new Date(now);
   yesterday.setDate(yesterday.getDate() - 1);
   const yesterdayIso = getJSTIsoDate(yesterday);
 
-  let previousContext = null;
-  if (enhancedEditorial) {
-    if (edition === 'evening') {
-      previousContext = await loadEditorialContext(s3, bucket, 'morning', todayIso);
-    } else {
-      previousContext = await loadEditorialContext(s3, bucket, 'evening', yesterdayIso);
-      if (!previousContext) {
-        previousContext = await loadEditorialContext(s3, bucket, 'morning', yesterdayIso);
-      }
-    }
-  }
+  const ledger = await loadStoryLedger(s3, bucket);
+  const labelOf = new Map(config.topics.map((t) => [t.id, t.label]));
+  const moved = movedStories(ledger, todayIso, (id) => labelOf.get(id) ?? id);
 
-  // ComposerAgent は WebAgent の出力を context 経由で受け取る。
-  // 収集はもう終わっているので、アーカイブから同じ形を組み直して渡す
-  const webOutput: AgentOutput = {
-    agentId: 'web',
-    data: { byTopic: archive.byTopic } satisfies WebAgentData,
-    tokensUsed: 0,
-    durationMs: 0,
-  };
+  // 前日のメモ。書く口（#13）はまだ無いので、いまは常に null になる
+  const noteBody = await loadNote(s3, bucket, yesterdayIso);
 
-  const composer = new ComposerAgent(
-    sesClient,
-    config,
-    dryRun,
-    /* buildOnly */ true,
-    edition,
-    previousContext
-  );
-  const result = await composer.run({ date: now, config, context: [webOutput] });
-  const data = result.data as {
-    subject?: string;
-    htmlBody?: string;
-    textBody?: string;
-    topicsCount?: number;
-    picks?: Array<{ title: string; comment: string }>;
-  };
+  // 号数は「観測できた日数」。欠測日を数えないよう台帳ではなくアーカイブの本数で出す
+  const issueNumber = (await listRunArchiveKeys(s3, bucket)).filter((k) =>
+    k.endsWith(`-${edition}.json`)
+  ).length;
 
-  if (!data?.subject || !data?.htmlBody || !data?.textBody) {
-    throw new Error('[index] ComposerAgent did not return expected email content');
-  }
+  const email = buildMorningEmail({
+    isoDate: todayIso,
+    issueNumber,
+    byTopic: archive.byTopic,
+    topicLabel: (id) => labelOf.get(id) ?? id,
+    moved,
+    note: noteBody ? { isoDate: yesterdayIso, body: noteBody } : null,
+    paperUrl,
+  });
 
   if (!dryRun) {
     await sesClient.sendEmail({
       from: config.senderEmail,
       to: config.recipientEmail,
-      subject: data.subject,
-      htmlBody: data.htmlBody,
-      textBody: data.textBody,
+      subject: email.subject,
+      htmlBody: email.htmlBody,
+      textBody: email.textBody,
     });
     console.log(`[index] Email sent to ${config.recipientEmail}`);
   } else {
     console.log('[index] Dry run: skipping email send');
-    console.log('Subject:', data.subject);
-  }
-
-  // picks はここで初めて決まるのでアーカイブに書き足す（sources と byTopic には触れない）
-  if (data.picks && data.picks.length > 0) {
-    try {
-      await updateRunArchivePicks(s3, bucket, todayIso, edition, data.picks);
-    } catch (err) {
-      console.warn(`[index] failed to write picks back to archive: ${(err as Error).message}`);
-    }
-    if (enhancedEditorial) {
-      const ctx = buildEditorialContext(edition, dateStr, todayIso, data.picks, archive.byTopic);
-      await saveEditorialContext(s3, bucket, ctx);
-    }
+    console.log('Subject:', email.subject);
   }
 
   console.log(
@@ -377,11 +337,15 @@ async function runNotifyPhaseFor(traceId: string, edition: 'morning' | 'evening'
       traceId,
       edition,
       isoDate: todayIso,
-      subject: data.subject,
-      topicsCount: data.topicsCount,
-      enhancedEditorial,
-      hasPreviousContext: previousContext !== null,
-      tokensUsed: result.tokensUsed,
+      issueNumber,
+      subject: email.subject,
+      items: Object.values(archive.byTopic).flat().length,
+      moved: {
+        new: moved.filter((m) => m.kind === 'new').length,
+        continued: moved.filter((m) => m.kind === 'continued').length,
+        ended: moved.filter((m) => m.kind === 'ended').length,
+      },
+      hasNote: noteBody !== null,
     })
   );
 }

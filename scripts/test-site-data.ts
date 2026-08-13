@@ -157,7 +157,6 @@ const paper = buildPaperData(archives, ledger, TOPICS, '2026-08-10T21:25:00.000Z
 check('記事が全件入る', paper.articles.length === 3, String(paper.articles.length));
 check('日ごとの束が入る', paper.days.length === 2, String(paper.days.length));
 check('話題が全件入る', paper.stories.length === 2, String(paper.stories.length));
-check('picks が入る', paper.days[0].picks.length === 1, JSON.stringify(paper.days[0].picks));
 check('日次の変化が入る', paper.changes.length === 2, String(paper.changes.length));
 check(
   '直近に動きのある話題が live',

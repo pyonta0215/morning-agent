@@ -110,6 +110,65 @@ export interface DailyChange {
   touched: number;
 }
 
+/**
+ * その日に動いた話題を、メールと紙面にそのまま出せる形で返す。
+ *
+ * 記事は毎日入れ替わるので「今日は何があったか」を記事で表すと毎日ゼロから読むことになる。
+ * 話題の単位で「新しく出た / 続いた / 止まった」を出すと、前日からの差分として読める。
+ */
+export type MovedKind = 'new' | 'continued' | 'ended';
+
+export interface MovedStory {
+  kind: MovedKind;
+  story: Story;
+  /** 表示用の補足（「2026-08-02 から 9日目　通算2件目」など） */
+  note: string;
+}
+
+export function movedStories(
+  ledger: StoryLedger,
+  isoDate: string,
+  topicLabel: (topicId: string) => string = (t) => t
+): MovedStory[] {
+  const out: MovedStory[] = [];
+
+  for (const s of ledger.stories) {
+    if (s.mergedInto) continue;
+
+    if (s.firstSeen === isoDate) {
+      out.push({ kind: 'new', story: s, note: `${topicLabel(s.topic)}　今日はじめて出た話題` });
+      continue;
+    }
+    if ((s.dailyCounts[isoDate] ?? 0) > 0) {
+      const st = statsAsOf(s, isoDate);
+      out.push({
+        kind: 'continued',
+        story: s,
+        note: `${s.firstSeen} から ${st?.spanDays ?? 1}日目　通算${s.articleIds.length}件`,
+      });
+    }
+  }
+
+  // 「止まった」は動きが無かったことなので、その日には現れない。
+  // 最後の記事から DORMANT_AFTER_DAYS + 1 日が経った日に一度だけ知らせる
+  for (const s of ledger.stories) {
+    if (s.mergedInto) continue;
+    if (dayDiff(s.lastSeen, isoDate) === DORMANT_AFTER_DAYS + 1) {
+      out.push({
+        kind: 'ended',
+        story: s,
+        note: `${s.lastSeen} を最後に1週間動きなし　通算${s.articleIds.length}件`,
+      });
+    }
+  }
+
+  // 新規 → 続報 → 終了 の順。件数の多いものを上に
+  const order: Record<MovedKind, number> = { new: 0, continued: 1, ended: 2 };
+  return out.sort(
+    (a, b) => order[a.kind] - order[b.kind] || b.story.articleIds.length - a.story.articleIds.length
+  );
+}
+
 /** 日付範囲について、日ごとの台帳の変化を求める */
 export function dailyChanges(ledger: StoryLedger, dates: string[]): DailyChange[] {
   return dates.map((date) => {

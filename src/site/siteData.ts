@@ -156,7 +156,6 @@ export interface PaperDay {
   date: string;
   edition: 'morning' | 'evening';
   articleIds: string[];
-  picks: Array<{ title: string; comment: string }>;
 }
 
 export interface PaperData {
@@ -220,7 +219,7 @@ export function buildPaperData(
         }
       }
     }
-    days.push({ date: a.isoDate, edition: a.edition, articleIds: ids, picks: a.picks ?? [] });
+    days.push({ date: a.isoDate, edition: a.edition, articleIds: ids });
   }
 
   const stories: PaperStory[] = ledger.stories

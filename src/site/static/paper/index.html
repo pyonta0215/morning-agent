@@ -394,13 +394,9 @@
   function renderToday() {
     var d = D.days[D.days.length - 1];
     if (!d) { $('p-today').innerHTML = '<div class="muted">まだありません。</div>'; return; }
-    var picks = d.picks && d.picks.length
-      ? '<h2 class="sec">今日の注目</h2><ul class="arts">' + d.picks.map(function (p) {
-          return '<li><div class="h">' + esc(p.title) + '</div><div class="s">' + esc(p.comment) + '</div></li>';
-        }).join('') + '</ul>'
-      : '';
-    $('p-today').innerHTML = '<h2 class="sec">' + jp(d.date) + ' <small>' + d.articleIds.length + '件</small></h2>' +
-      picks + '<ul class="arts">' + artList(d.articleIds) + '</ul>';
+    // 記事は重要度順に並ぶ（artList がスコア降順）。「今日の注目」欄は #11 で廃止した
+    $('p-today').innerHTML = '<h2 class="sec">' + jp(d.date) + ' <small>' + d.articleIds.length +
+      '件・重要度順</small></h2><ul class="arts">' + artList(d.articleIds) + '</ul>';
   }
 
   // ── アーカイブ（月 → 日 の2段。1年分でも日のボタンが31個で収まる）
