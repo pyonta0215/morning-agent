@@ -19,6 +19,19 @@ const WEB_SEARCH_MAX_USES_DEFAULT = 1;
 const SCORE_THRESHOLD = 4;
 /** 1トピックあたりの掲載上限（暴発防止の安全弁。通常は到達しない） */
 const MAX_ITEMS_PER_TOPIC = 8;
+/**
+ * 救済（閾値超えが無いトピックで最高スコア1件を拾う）の下限スコア。
+ *
+ * 救済はトピック崩壊（集約が特定トピックだけ返す）への保険であって、
+ * 「無関係な記事でも1件は載せる」という意味ではない。スコア基準では
+ * 1=無関係寄り / 2=軽微 なので、そこまで下がったら**載せないのが正しい**。
+ *
+ * この下限が要るのは、対象が狭い一次情報を足したときに効いてくるため。
+ * 例: 欧州委のデジタル政策フィードにはAI以外（域内メディア支援・人材育成）も流れ、
+ * e-Govのパブコメは全省庁の全案件が流れる。ヒットしない日のほうが多い情報源は、
+ * 「鳴らない日は黙る」のでなければノイズ源にしかならない。
+ */
+const RESCUE_MIN_SCORE = 3;
 /** web_search由来itemのスコア上限。fetch（>=SCORE_THRESHOLD）より必ず下に置き、
  *  二次ソースの鮮度補強が一次情報の見出しを押しのけて紙面先頭に立つのを防ぐ（demote）。 */
 const WEB_SEARCH_SCORE_CAP = SCORE_THRESHOLD - 1;
@@ -223,6 +236,8 @@ ${fetchedContent}`,
         // structured outputs によりスキーマ準拠のJSON（トピックID別オブジェクト）が保証される
         const parsed = JSON.parse(textBlock.text) as Record<string, SummaryItem[]>;
         let rescued = 0;
+        // 救済の下限に届かず空のままにしたトピック数。ここが常に高いソースは足しても無駄
+        let dropped = 0;
         for (const topic of input.config.topics) {
           // origin は「研究ハブが返したURLと一致し、かつ直fetchの取得テキストに存在しない」で判定する。
           // 研究ハブのURLはモデルの出力を経由せずコード側に残っているため実在が保証される
@@ -236,8 +251,13 @@ ${fetchedContent}`,
           // スコア閾値以上を全件採用。閾値超えが無いが候補はあるトピックは最高スコア1件を救済（空トピック=崩壊を防ぐ）
           let kept = raw.filter((i) => i.score >= SCORE_THRESHOLD);
           if (kept.length === 0 && raw.length > 0) {
-            kept = [raw.reduce((a, b) => (b.score > a.score ? b : a))];
-            rescued++;
+            const best = raw.reduce((a, b) => (b.score > a.score ? b : a));
+            if (best.score >= RESCUE_MIN_SCORE) {
+              kept = [best];
+              rescued++;
+            } else {
+              dropped++;
+            }
           }
           kept.sort((a, b) => b.score - a.score);
           data.byTopic[topic.id] = kept.slice(0, MAX_ITEMS_PER_TOPIC);
@@ -247,7 +267,7 @@ ${fetchedContent}`,
         const topicCount = Object.values(data.byTopic).filter((v) => v.length > 0).length;
         const researchCount = allItems.filter((i) => i.origin === 'research').length;
         console.log(
-          `[WebAgent] parsed: ${topicCount} topics, ${itemCount} items (threshold>=${SCORE_THRESHOLD}, rescued ${rescued}, research由来 ${researchCount})`
+          `[WebAgent] parsed: ${topicCount} topics, ${itemCount} items (threshold>=${SCORE_THRESHOLD}, rescued ${rescued}, 低スコアで見送り ${dropped}, research由来 ${researchCount})`
         );
       } catch (err) {
         console.warn(`[WebAgent] Failed to parse summary response as JSON: ${(err as Error).message}`);

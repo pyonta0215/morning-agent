@@ -19,6 +19,9 @@ topics:
     urls:
       - https://www.anthropic.com/news
       - https://openai.com/news/rss.xml
+      # 一次情報が Anthropic と OpenAI の2社だけだと「業界」ではなく「2社」を見ることになる。
+      # DeepMind を足して研究・実装側の視野を広げる（2026-08-13 到達確認: 10件・当日更新）
+      - https://deepmind.google/blog/rss.xml
     # research-hub（HN/arXiv/GitHub/RSS）による補強。ENABLE_RESEARCH_HUB=true のときだけ効く。
     # 切ったweb_search補強の無料リプレースとして、まずこのトピック1本で純寄与を観測する（2026-08-06〜）。
     # queries は keywords と別立て: HN検索(Algolia)は語をANDで扱うため、1語ずつ投げないと0件になる。
@@ -58,4 +61,27 @@ topics:
       - https://www3.nhk.or.jp/rss/news/cat4.xml
       - https://www.kantei.go.jp/index-jnews.rdf
       - https://www.digital.go.jp/rss/news.xml
+      # パブリックコメント。「案→意見募集→結果公示」という段階を持つ一次情報で、
+      # 法案が国会に出る前の段階を拾える唯一の口。ただし全省庁の全案件が流れるので
+      # ヒット率は低い（2026-08-13 の実測10件は土地区画整理法・ワシントン条約・鉄道運賃など）。
+      # RESCUE_MIN_SCORE が無いとこれが毎日1件ずつ紙面に載るので、セットで入れること
+      - https://public-comment.e-gov.go.jp/rss/pcm_list.xml
+
+  # AI・デジタルの「ルール側」。段階（規則案→施行→執行）を持つので台帳と相性が良い。
+  # 2026-08-13 に候補を全部叩いて選んだ。落とした先と理由:
+  #   NIST news            AIフィルタ(?topics=)が効かず、実測10件中AI関連は1件。残りはナノテク・量子・繊維
+  #   Federal Register     全文検索しか無く、"artificial intelligence" が本文にかすった無関係な規則が大半
+  #   UK AI Safety Institute  フィードは生きているが最新が2025-01-29で1年半以上停止
+  #   経済産業省 whatsnew.rdf  403（Mozilla UAでも拒否）
+  #   総務省 news.rdf      Shift_JIS で、いまの axios は UTF-8 前提のため文字化けする
+  #   artificialintelligenceact.eu  更新はあるが解説サイトで論説寄り。一次情報ではないため見送り
+  - id: ai_policy
+    label: AI・デジタル規制
+    story: true
+    # Google News 検索は付けない。ここは一次情報だけを見る枠にする（報道は ai / jp_politics 側で拾える）
+    keywords: []
+    urls:
+      # 欧州委員会。AI Act の施行・透明性ガイドライン・DSA の制裁がここから出る。
+      # AI以外（域内メディア支援・人材育成）も流れるが、スコアで落ちる
+      - https://digital-strategy.ec.europa.eu/en/rss.xml
 

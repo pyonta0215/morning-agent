@@ -8,7 +8,8 @@
     "build": "esbuild src/index.ts --bundle --platform=node --target=node22 --outfile=dist/index.js --external:@aws-sdk/* --log-override:empty-import-meta=silent && cp src/config/topics.yaml dist/topics.yaml && node -e \"require('fs').copyFileSync(require.resolve('research-hub-mcp/config/feeds.json'),'dist/feeds.json')\" && node -e \"require('fs').cpSync('src/site/static','dist/site',{recursive:true})\"",
     "test:site-auth": "node infra/functions/site-auth.test.mjs",
     "test:site-data": "npx tsx scripts/test-site-data.ts",
-    "test": "npm run test:site-auth && npm run test:site-data",
+    "test:feed-parse": "npx tsx scripts/test-feed-parse.ts",
+    "test": "npm run test:site-auth && npm run test:site-data && npm run test:feed-parse",
     "deploy": "npm run build && cd infra && npx cdk deploy --all",
     "test-run": "npx tsx scripts/test-run.ts",
     "oauth-setup": "npx tsx scripts/oauth-setup.ts"

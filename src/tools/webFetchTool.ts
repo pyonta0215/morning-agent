@@ -38,10 +38,21 @@ interface FetchResult {
   rssItems?: RssItemMeta[];
 }
 
-/** RSS/Atom かどうかを判定 */
-function isRss(body: string): boolean {
-  const head = body.trimStart().slice(0, 200);
-  return /<rss|<feed|<channel/i.test(head);
+/**
+ * RSS/Atom/RDF かどうかを判定する。
+ *
+ * 先頭200字・`<rss|<feed|<channel` だけを見ていたころ、**RSS 1.0（RDF）が漏れていた**。
+ * RDFは `<rdf:RDF ...>` の名前空間宣言が長く、`<channel>` が200字の外に出る
+ * （e-Gov パブリックコメントで実測 約190字、4gamer も同型）。漏れるとフィードが
+ * HTMLとして雑にタグ剥がしされ、記事URLも日付も取れないまま本文だけがLLMに渡る。
+ *
+ * 窓を広げるかわりに、HTMLを先に弾く。HTMLの `<head>` には RSS 自動検出用の
+ * `<link type="application/rss+xml">` が入っていることがあるため。
+ */
+export function isRss(body: string): boolean {
+  const head = body.trimStart().slice(0, 1000);
+  if (/^<(?:!doctype\s+html|html)\b/i.test(head)) return false;
+  return /<(?:rss|feed|rdf:RDF|channel)[\s>]/i.test(head);
 }
 
 /**
@@ -68,7 +79,7 @@ interface ParseRssOptions {
 }
 
 /** RSS/Atom の <item> / <entry> を構造化テキストに変換し、素通しの情報も併せて返す */
-function parseRss(
+export function parseRss(
   body: string,
   options: ParseRssOptions = {}
 ): { text: string; metas: RssItemMeta[] } {
@@ -90,7 +101,13 @@ function parseRss(
       extractTag(block, 'link') ||
       extractAttr(block, 'link', 'href') ||
       extractTag(block, 'guid');
-    const pubDate = extractTag(block, 'pubDate') || extractTag(block, 'published');
+    // RSS 2.0 は pubDate、Atom は published/updated、RSS 1.0（RDF）は dc:date。
+    // dc:date を見ないと RDF の記事は全て「日付不明＝最新扱い」になり、sinceDate で古い記事を切れない
+    const pubDate =
+      extractTag(block, 'pubDate') ||
+      extractTag(block, 'published') ||
+      extractTag(block, 'dc:date') ||
+      extractTag(block, 'updated');
     const description =
       stripTags(extractTag(block, 'description') || extractTag(block, 'summary'))
         .replace(/\s+/g, ' ')
