@@ -5,6 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <title>毎朝、世の中を定点観測している</title>
+<!-- OGP。noindex は維持したまま（検索には載せない）、URLを渡したときの見え方だけ整える。
+     画像は imai.me 側に置いている: publish がテキストとして読むため、この配下に PNG は置けない -->
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://news.imai.me/">
+<meta property="og:site_name" content="定点観測 — MORNING AGENT">
+<meta property="og:title" content="毎朝、世の中を定点観測している">
+<meta property="og:description" content="毎朝ニュースを集めて「続いている話題」の単位でまとめ直す仕組みを、自作して動かしています。この面に出しているのは集計値と、自分で書いた文章だけです。">
+<meta property="og:image" content="https://imai.me/assets/og-news.png">
+<meta name="twitter:card" content="summary_large_image">
 <style>
   :root {
     --ink: #14110e; --sub: #55504a; --mute: #9b948c; --line: #d9d4cb;
@@ -112,8 +121,15 @@
   <div id="topics" style="font-family:var(--mincho);font-size:15px"></div>
 
   <h2>メモ <small>自分で書いたものだけ</small></h2>
+  <!-- ここは自動生成しない。書いたものを直接置く（overview.json は集計値だけに保つため） -->
   <ul class="notes" id="notes">
-    <li class="empty">まだありません。</li>
+    <li>
+      <span class="d">2026.08.12</span>
+      紙面のデータを、DBを持たずに1本のJSONで丸ごと配る設計にした。実測してみたら、
+      当初の見積りの3倍の大きさになっていた。効いていたのは記事の要約で、増え続けるのもそこ。
+      いまの規模では困らないが、重くなってきたら「直近ぶんだけ要約を持ち、それ以前は見出しだけ」に
+      落とすのが最初の一手になると思う。見積りを外した記録として書き残しておく。
+    </li>
   </ul>
 
   <div class="privacy">
