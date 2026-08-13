@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { type Agent, type AgentInput, type AgentOutput, type Topic } from './base.js';
-import { handleWebFetch } from '../tools/webFetchTool.js';
+import { handleWebFetch, type RssItemMeta } from '../tools/webFetchTool.js';
 import { collectResearch, formatResearchBlock, researchUrlSet } from '../tools/researchTool.js';
 import { logLlm, calcCost } from '../utils/llmLogger.js';
 import { normalizeUrl, type DeliveredItem } from '../utils/deliveredHistory.js';
@@ -37,6 +37,11 @@ export interface WebAgentData {
   byTopic: Record<string, WebItem[]>;
   /** 収集ソースの生データ（実行アーカイブ用。composer は参照しない） */
   sources?: Array<{ topicId: string; topicLabel: string; url: string; content: string }>;
+  /**
+   * RSSから素通しで取れた情報（#1）。記事URLをキーにした対応表。
+   * LLMの出力ではないので、集約で見出しが書き換わっても値は動かない
+   */
+  rssMeta?: Record<string, RssItemMeta>;
 }
 
 export class WebAgent implements Agent {
@@ -104,7 +109,11 @@ export class WebAgent implements Agent {
             sinceDate: twoDaysAgo,
             excludeUrls: deliveredUrls,
           });
-          return { ...u, content: result.text ?? result.error ?? '（取得失敗）' };
+          return {
+            ...u,
+            content: result.text ?? result.error ?? '（取得失敗）',
+            rssItems: result.rssItems,
+          };
         })
       ),
       Promise.all(
@@ -190,6 +199,14 @@ ${fetchedContent}`,
       success: true,
     });
 
+    // 集約で見出しが書き換わっても引けるよう、正規化URLをキーにする
+    const rssMeta: Record<string, RssItemMeta> = {};
+    for (const r of fetchResults) {
+      for (const meta of r.rssItems ?? []) {
+        if (meta.url) rssMeta[normalizeUrl(meta.url)] = meta;
+      }
+    }
+
     const data: WebAgentData = {
       byTopic: {},
       sources: allSources.map((r) => ({
@@ -198,6 +215,7 @@ ${fetchedContent}`,
         url: r.url,
         content: r.content,
       })),
+      rssMeta,
     };
     const textBlock = summaryResponse.content.find((c) => c.type === 'text');
     if (textBlock && textBlock.type === 'text') {

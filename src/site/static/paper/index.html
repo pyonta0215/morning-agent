@@ -140,6 +140,7 @@
   .arts .s { font-size: 12px; color: var(--sub); line-height: 1.7; margin-top: 3px; }
   .arts .m { font-size: 10px; color: var(--mute); letter-spacing: .1em; margin-top: 4px; }
   .arts .m .tp { color: var(--accent); font-weight: 700; margin-right: 8px; }
+  .arts .m .src { color: var(--sub); font-weight: 700; margin-right: 8px; }
 
   .daybar { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 4px; }
   .daybar button {
@@ -356,7 +357,8 @@
     $('lead-tl').innerHTML = items.length
       ? items.map(function (a, i) {
           var dim = i < items.length - 6 ? ' class="dim"' : '';
-          return '<li' + dim + '><span class="d">' + a.date + '</span>' +
+          return '<li' + dim + '><span class="d">' + a.date +
+            (a.sourceName ? '　' + esc(a.sourceName) : '') + '</span>' +
             '<a href="' + esc(a.url) + '" target="_blank" rel="noopener">' + esc(a.title) + '</a>' +
             '<span class="sm">' + esc(a.summary) + '</span></li>';
         }).join('')
@@ -377,6 +379,25 @@
     window.scrollTo({ top: 0, behavior: 'smooth' });
   });
 
+  /** 発行元。取れていない記事には何も出さない（「不明」を並べても情報が増えない） */
+  function source(a) {
+    return a.sourceName ? '<span class="src">' + esc(a.sourceName) + '</span>' : '';
+  }
+  /**
+   * 公開日時。実測（rss）と、取れなくて紙面掲載日で代用したもの（delivered）を区別する。
+   * 推測値を実測値と同じ顔で並べない
+   */
+  function published(a) {
+    if (!a.publishedAt) return a.date;
+    var d = new Date(a.publishedAt);
+    var s = d.toLocaleString('ja-JP', {
+      timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit',
+    });
+    return a.publishedAtSource === 'rss'
+      ? s + ' 公開'
+      : '<span title="公開日時が取れなかったので紙面に載った日で代用">' + a.date + ' 掲載</span>';
+  }
+
   // ── 記事リストの共通描画
   function artList(ids) {
     var items = ids.map(function (id) { return ART[id]; }).filter(Boolean)
@@ -386,7 +407,8 @@
       return '<li><div class="h"><a href="' + esc(a.url) + '" target="_blank" rel="noopener">' +
         esc(a.title) + '</a></div><div class="s">' + esc(a.summary) + '</div>' +
         '<div class="m"><span class="tp">' + esc(TOPIC[a.topic] || a.topic) + '</span>' +
-        '重要度 ' + '●'.repeat(a.score) + '○'.repeat(Math.max(0, 5 - a.score)) + '　' + a.date + '</div></li>';
+        source(a) + '重要度 ' + '●'.repeat(a.score) + '○'.repeat(Math.max(0, 5 - a.score)) +
+        '　' + published(a) + '</div></li>';
     }).join('');
   }
 
@@ -515,7 +537,8 @@
       ? hits.map(function (a) {
           return '<li><div class="h"><a href="' + esc(a.url) + '" target="_blank" rel="noopener">' +
             esc(a.title) + '</a></div><div class="s">' + esc(a.summary) + '</div>' +
-            '<div class="m"><span class="tp">' + esc(TOPIC[a.topic] || a.topic) + '</span>' + a.date + '</div></li>';
+            '<div class="m"><span class="tp">' + esc(TOPIC[a.topic] || a.topic) + '</span>' +
+            source(a) + published(a) + '</div></li>';
         }).join('')
       : '<li class="muted">見つかりませんでした。</li>';
     show('search');

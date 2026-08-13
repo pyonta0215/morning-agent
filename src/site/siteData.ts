@@ -18,6 +18,7 @@ import type { RunArchive } from '../utils/runArchive.js';
 import type { StoryLedger } from '../utils/storyLedger.js';
 import { ACTIVE_WINDOW_DAYS, DORMANT_AFTER_DAYS, articleId } from '../utils/storyLedger.js';
 import { stats, dailyChanges, KIND_LABEL, type StoryKind } from '../utils/storyMetrics.js';
+import type { ArticleIdentity } from '../utils/articleIdentity.js';
 
 /** サイトへ置く1ファイル */
 export interface SiteFile {
@@ -132,6 +133,12 @@ export interface PaperArticle {
   score: number;
   /** 紙面に載った日 */
   date: string;
+  /** 発行元の表示名（「PC Watch」など）。取れなかった記事には無い（#1） */
+  sourceName?: string;
+  /** 記事の公開日時（ISO） */
+  publishedAt?: string;
+  /** publishedAt が実測（rss）か、紙面掲載日での代用（delivered）か */
+  publishedAtSource?: 'rss' | 'delivered';
 }
 
 export interface PaperStory {
@@ -192,7 +199,9 @@ export function buildPaperData(
   archives: RunArchive[],
   ledger: StoryLedger,
   topics: Array<{ id: string; label: string }>,
-  generatedAt: string
+  generatedAt: string,
+  /** 記事IDをキーにした同一性情報（#1 #2）。無い記事は発行元・公開日時が空になるだけ */
+  identities: Map<string, ArticleIdentity> = new Map()
 ): PaperData {
   const sorted = [...archives].sort((a, b) => (a.isoDate < b.isoDate ? -1 : 1));
   const lastDate = sorted[sorted.length - 1]?.isoDate ?? generatedAt.slice(0, 10);
@@ -207,6 +216,7 @@ export function buildPaperData(
         const id = articleId(item.url);
         ids.push(id);
         if (!articles.has(id)) {
+          const ident = identities.get(id);
           articles.set(id, {
             id,
             title: item.title,
@@ -215,6 +225,9 @@ export function buildPaperData(
             topic,
             score: item.score,
             date: a.isoDate,
+            sourceName: ident?.sourceName,
+            publishedAt: ident?.publishedAt,
+            publishedAtSource: ident?.publishedAtSource,
           });
         }
       }
@@ -261,11 +274,12 @@ export function buildSiteFiles(
   archives: RunArchive[],
   ledger: StoryLedger,
   topics: Array<{ id: string; label: string }>,
-  generatedAt: string
+  generatedAt: string,
+  identities: Map<string, ArticleIdentity> = new Map()
 ): SiteFile[] {
   const overview = buildOverview(archives, ledger, topics, generatedAt);
   assertOverviewIsPublicSafe(overview, ledger);
-  const paper = buildPaperData(archives, ledger, topics, generatedAt);
+  const paper = buildPaperData(archives, ledger, topics, generatedAt, identities);
 
   return [
     {

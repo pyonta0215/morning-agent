@@ -34,6 +34,8 @@ interface FetchResult {
   url: string;
   text?: string;
   error?: string;
+  /** RSS のとき、LLMを通さずに確定する情報（#1）。HTML取得のときは undefined */
+  rssItems?: RssItemMeta[];
 }
 
 /** RSS/Atom かどうかを判定 */
@@ -42,15 +44,36 @@ function isRss(body: string): boolean {
   return /<rss|<feed|<channel/i.test(head);
 }
 
+/**
+ * RSS の1件から取れる、LLMを通さずに確定する情報（#1）。
+ * 本文テキストはLLMに渡すが、こちらは**素通しで記事に付ける**。
+ * LLMに要約させたものと違い、あとから検証できる値だけをここに入れる。
+ */
+export interface RssItemMeta {
+  url: string;
+  /** RSS の生の見出し。Google News は末尾に発行元が付く */
+  title: string;
+  guid?: string;
+  pubDate?: string;
+  /** <source url="..."> */
+  sourceUrl?: string;
+  /** <source> のテキスト。「PC Watch」など */
+  sourceName?: string;
+}
+
 interface ParseRssOptions {
   maxItems?: number;
   sinceDate?: Date;
   excludeUrls?: Set<string>;
 }
 
-/** RSS/Atom の <item> / <entry> を構造化テキストに変換 */
-function parseRss(body: string, options: ParseRssOptions = {}): string {
+/** RSS/Atom の <item> / <entry> を構造化テキストに変換し、素通しの情報も併せて返す */
+function parseRss(
+  body: string,
+  options: ParseRssOptions = {}
+): { text: string; metas: RssItemMeta[] } {
   const { maxItems = 10, sinceDate, excludeUrls } = options;
+  const metas: RssItemMeta[] = [];
   // <item>...</item> または <entry>...</entry> を抽出
   const itemPattern = /<(?:item|entry)[\s>]([\s\S]*?)<\/(?:item|entry)>/gi;
   const items: string[] = [];
@@ -91,6 +114,15 @@ function parseRss(body: string, options: ParseRssOptions = {}): string {
       continue;
     }
 
+    metas.push({
+      url: link,
+      title,
+      guid: extractTag(block, 'guid') || undefined,
+      pubDate: pubDate || undefined,
+      sourceUrl: extractAttr(block, 'source', 'url') || undefined,
+      sourceName: extractTag(block, 'source') || undefined,
+    });
+
     items.push(
       [
         `タイトル: ${title}`,
@@ -107,9 +139,11 @@ function parseRss(body: string, options: ParseRssOptions = {}): string {
     console.log(`[webFetch] rss filtered: ${skippedOld} old, ${skippedDelivered} delivered`);
   }
 
-  return items.length > 0
-    ? items.map((item, i) => `[記事${i + 1}]\n${item}`).join('\n\n')
-    : '（新着記事はありませんでした）';
+  const text =
+    items.length > 0
+      ? items.map((item, i) => `[記事${i + 1}]\n${item}`).join('\n\n')
+      : '（新着記事はありませんでした）';
+  return { text, metas };
 }
 
 function extractTag(block: string, tag: string): string {
@@ -145,9 +179,11 @@ export async function handleWebFetch(input: FetchInput): Promise<FetchResult> {
 
     // RSS/Atom なら記事リストとして返す
     if (isRss(body)) {
-      const text = parseRss(body, { sinceDate, excludeUrls }).slice(0, maxLength);
-      console.log(`[webFetch] rss ok: ${url} (${text.length} chars)`);
-      return { url, text };
+      const parsed = parseRss(body, { sinceDate, excludeUrls });
+      const text = parsed.text.slice(0, maxLength);
+      console.log(`[webFetch] rss ok: ${url} (${text.length} chars, ${parsed.metas.length} items)`);
+      // metas は maxLength で切らない。LLMには渡さず、記事に素通しで付ける情報なので
+      return { url, text, rssItems: parsed.metas };
     }
 
     // 通常 HTML

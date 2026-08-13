@@ -28,6 +28,9 @@ import { articleId } from './utils/storyLedger.js';
 import { assignArticlesToStories, type AssignableArticle } from './agents/storyAgent.js';
 import { catchAllWarnings, movedStories } from './utils/storyMetrics.js';
 import { loadNote } from './utils/notes.js';
+import { buildIdentity, type ArticleIdentity } from './utils/articleIdentity.js';
+import { saveEnrichedRun, loadEnrichedRun } from './utils/enrichedStore.js';
+import { normalizeUrl } from './utils/deliveredHistory.js';
 import { buildMorningEmail } from './email/morningEmail.js';
 
 function getS3Client(region: string): S3Client {
@@ -168,6 +171,31 @@ async function runCollectPhaseFor(traceId: string, edition: 'morning' | 'evening
     })),
   });
 
+  // 記事の同一性情報（発行元・公開日時）。archive は書き換えず enriched/ に置く（#1）
+  try {
+    await saveEnrichedRun(s3, bucket, {
+      isoDate: todayIso,
+      edition,
+      generatedAt: new Date().toISOString(),
+      articles: Object.values(webData.byTopic)
+        .flat()
+        .map((item) => {
+          const meta = webData.rssMeta?.[normalizeUrl(item.url)];
+          return buildIdentity({
+            url: item.url,
+            sourceUrl: meta?.sourceUrl,
+            sourceName: meta?.sourceName,
+            pubDate: meta?.pubDate,
+            rssTitle: meta?.title,
+            fallbackDate: todayIso,
+          });
+        }),
+    });
+  } catch (err) {
+    // 紙面の表示が寂しくなるだけで、収集も配信も止める理由にならない
+    console.warn(`[index] failed to save enriched run: ${(err as Error).message}`);
+  }
+
   // ストーリー台帳を更新する（蓄積の本体。紙面・メール・概観はすべてここから作る）
   await updateStoryLedger(s3, bucket, config.topics, webData.byTopic, todayIso);
 
@@ -221,13 +249,24 @@ async function runPublishPhase(traceId: string): Promise<void> {
   const loaded = await Promise.all(keys.map((k) => loadRunArchive(s3, bucket, k)));
   const archives = loaded.filter((a): a is RunArchive => a !== null);
 
+  // 同一性情報。新規収集ぶんは collect が、過去ぶんは backfill-identity.ts が置いている。
+  // 無い日があっても紙面の発行元欄が空になるだけなので、落とさず進める
+  const identities = new Map<string, ArticleIdentity>();
+  const enrichedRuns = await Promise.all(
+    archives.map((a) => loadEnrichedRun(s3, bucket, a.isoDate, a.edition))
+  );
+  for (const run of enrichedRuns) {
+    for (const ident of run?.articles ?? []) identities.set(ident.id, ident);
+  }
+
   const files = [
     ...collectStaticFiles(),
     ...buildSiteFiles(
       archives,
       ledger,
       config.topics.map((t) => ({ id: t.id, label: t.label })),
-      new Date().toISOString()
+      new Date().toISOString(),
+      identities
     ),
   ];
 
@@ -249,6 +288,7 @@ async function runPublishPhase(traceId: string): Promise<void> {
       traceId,
       archives: archives.length,
       stories: ledger.stories.length,
+      identities: identities.size,
       files: files.length,
     })
   );

@@ -15,6 +15,13 @@ import {
 } from '../src/site/siteData.js';
 import type { StoryLedger } from '../src/utils/storyLedger.js';
 import type { RunArchive } from '../src/utils/runArchive.js';
+import {
+  articleId,
+  buildIdentity,
+  googleNewsGuid,
+  publisherFromRssTitle,
+  type ArticleIdentity,
+} from '../src/utils/articleIdentity.js';
 
 const TOPICS = [
   { id: 'ai', label: 'AI・LLM' },
@@ -152,8 +159,45 @@ expectThrow('配列の奥に混ぜても落ちる', (o) => {
   (o as unknown as Record<string, unknown>).nested = [{ deep: [ledger.stories[1].title] }];
 });
 
+// ── 同一性情報が紙面に合流すること（#1 #2）
+const identities = new Map<string, ArticleIdentity>([
+  [
+    articleId('https://example.com/1'),
+    {
+      id: articleId('https://example.com/1'),
+      url: 'https://example.com/1',
+      publishedAt: '2026-06-12T00:30:00.000Z',
+      publishedAtSource: 'rss',
+      sourceName: 'PC Watch',
+      sourceDomain: 'pc.watch.impress.co.jp',
+      sourceFrom: 'rss',
+    },
+  ],
+]);
+
 // ── 紙面データ
-const paper = buildPaperData(archives, ledger, TOPICS, '2026-08-10T21:25:00.000Z');
+const paper = buildPaperData(archives, ledger, TOPICS, '2026-08-10T21:25:00.000Z', identities);
+const enriched = paper.articles.find((a) => a.url === 'https://example.com/1');
+check('発行元が合流する', enriched?.sourceName === 'PC Watch', String(enriched?.sourceName));
+check('公開日時が合流する', enriched?.publishedAt === '2026-06-12T00:30:00.000Z');
+check('公開日時の由来が残る', enriched?.publishedAtSource === 'rss');
+const plain = paper.articles.find((a) => a.url === 'https://example.com/3');
+check('同一性情報が無い記事は空のまま', plain !== undefined && plain.sourceName === undefined);
+
+// ── 発行元の取り出し（#1）
+check('Google News の guid をURLから復元', googleNewsGuid('https://news.google.com/rss/articles/CBMiABC?oc=5') === 'CBMiABC');
+check('直fetchのURLには guid が無い', googleNewsGuid('https://arxiv.org/abs/2608.09934') === undefined);
+check('見出し末尾から発行元', publisherFromRssTitle('Switch 2の新機能を解説 - PC Watch') === 'PC Watch');
+check('見出しにハイフンが複数あっても末尾だけ', publisherFromRssTitle('A - B - ファミ通') === 'ファミ通');
+check('長すぎる末尾は発行元にしない', publisherFromRssTitle('見出し - ' + 'あ'.repeat(30)) === undefined);
+check('区切りが無ければ発行元なし', publisherFromRssTitle('区切りのない見出し') === undefined);
+// Google News のURLをホストから発行元にしてはいけない
+const gn = buildIdentity({ url: 'https://news.google.com/rss/articles/CBMiXYZ?oc=5', rssTitle: '見出し - ITmedia' });
+check('Google News はホストを発行元にしない', gn.sourceDomain !== 'news.google.com', String(gn.sourceDomain));
+check('Google News は見出しから発行元', gn.sourceName === 'ITmedia' && gn.sourceFrom === 'rss-title');
+const direct = buildIdentity({ url: 'https://www.nhk.or.jp/news/1.html', fallbackDate: '2026-08-13' });
+check('直fetchはURLのホスト', direct.sourceDomain === 'nhk.or.jp' && direct.sourceFrom === 'url');
+check('公開日時が取れなければ掲載日で代用と記録', direct.publishedAtSource === 'delivered');
 check('記事が全件入る', paper.articles.length === 3, String(paper.articles.length));
 check('日ごとの束が入る', paper.days.length === 2, String(paper.days.length));
 check('話題が全件入る', paper.stories.length === 2, String(paper.stories.length));
