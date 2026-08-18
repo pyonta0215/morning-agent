@@ -2,6 +2,7 @@ import { search, trending } from 'research-hub-mcp/lib';
 import type { Item } from 'research-hub-mcp/schema';
 import type { ResearchSpec, Topic } from '../agents/base.js';
 import { normalizeUrl } from '../utils/deliveredHistory.js';
+import { collectHuggingFaceModels } from './hfTool.js';
 
 // research-hub（HN / arXiv / GitHub / RSS）から候補記事を集める薄いアダプタ。
 // MCPプロトコルは介さず service 層の関数を直接呼ぶ（Lambdaのバッチ処理では往復が純粋な損なため）。
@@ -24,12 +25,25 @@ export interface ResearchCollectResult {
 
 /** 指定時間で解決しなければ reject する。research-hub 側のfetchタイムアウトを跨ぐ最終防壁 */
 function withTimeout<T>(p: Promise<T>, label: string): Promise<T> {
-  return Promise.race([
-    p,
-    new Promise<T>((_, reject) =>
-      setTimeout(() => reject(new Error(`${label}: ${CALL_TIMEOUT_MS}ms でタイムアウト`)), CALL_TIMEOUT_MS)
-    ),
-  ]);
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`${label}: ${CALL_TIMEOUT_MS}ms でタイムアウト`)),
+      CALL_TIMEOUT_MS
+    );
+    // 成功・失敗時にタイマーを必ず破棄する。Promise.raceだけでは成功後も20秒残り、
+    // ローカル実行やLambdaのイベントループを不要に待たせてしまう。
+    timer.unref();
+    p.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
 }
 
 /** 検索クエリ。spec.queries が無ければトピックの keywords を1語ずつ使う（AND検索で0件になるのを避ける） */
@@ -80,6 +94,13 @@ export async function collectResearch(
           period: t.period ?? 'day',
           limit: t.limit ?? DEFAULT_LIMIT,
         }),
+    });
+  }
+
+  if (spec.huggingFace) {
+    calls.push({
+      label: 'huggingface',
+      run: () => collectHuggingFaceModels(spec.huggingFace!),
     });
   }
 

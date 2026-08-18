@@ -41,6 +41,14 @@ check(
   aiOss?.research?.trending
 );
 
+const aiModel = byId.get('ai_model');
+check(
+  'ai_model は主要5組織のHugging Face公式モデルを観測する',
+  aiModel?.research?.huggingFace?.authors.length === 5 &&
+    aiModel.research.huggingFace.sinceDays === 7,
+  aiModel?.research?.huggingFace
+);
+
 const aiFamily = ['ai', 'ai_oss', 'ai_model'].map((id) => byId.get(id));
 check('AI系3トピックが定義されている', aiFamily.every(Boolean), aiFamily);
 check(

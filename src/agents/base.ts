@@ -1,5 +1,17 @@
 import type { DeliveredItem } from '../utils/deliveredHistory.js';
 
+/** Hugging Face公式モデルAPIから新しいモデル系列を拾う設定 */
+export interface HuggingFaceSpec {
+  /** 公式Organization名（例: Qwen, deepseek-ai） */
+  authors: string[];
+  /** 1 Organizationあたりの取得件数 */
+  limitPerAuthor?: number;
+  /** 最終更新が何日前までのモデルを候補にするか */
+  sinceDays?: number;
+  /** 派生版を畳んだ後に集約フェーズへ渡す最大件数 */
+  maxItems?: number;
+}
+
 /** research-hub（HN / arXiv / GitHub / RSS）からの補強設定。未指定のトピックは従来どおり */
 export interface ResearchSpec {
   search?: {
@@ -20,6 +32,8 @@ export interface ResearchSpec {
     period?: 'day' | 'week';
     limit?: number;
   }>;
+  /** research-hubにまだ無いHugging Face公式モデルAPIの専用アダプタ */
+  huggingFace?: HuggingFaceSpec;
 }
 
 export interface Topic {
@@ -36,7 +50,7 @@ export interface Topic {
    * 「継続する話題」として成立するトピックだけに絞る。判断根拠は topics.yaml のコメント。
    */
   story?: boolean;
-  /** research-hub による補強（ENABLE_RESEARCH_HUB=true のときのみ有効） */
+  /** 外部研究ソースによる補強（ENABLE_RESEARCH_HUB=true のときのみ有効） */
   research?: ResearchSpec;
 }
 

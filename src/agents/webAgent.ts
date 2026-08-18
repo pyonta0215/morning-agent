@@ -105,7 +105,7 @@ export class WebAgent implements Agent {
       return [...staticUrls, newsSearchUrl];
     });
 
-    // research-hub 補強の対象トピック（ENABLE_RESEARCH_HUB=true かつ topics.yaml に research: があるもの）
+    // 外部研究ソース補強の対象トピック（ENABLE_RESEARCH_HUB=true かつ topics.yaml に research: があるもの）
     const researchTopics =
       process.env.ENABLE_RESEARCH_HUB === 'true'
         ? input.config.topics.filter((t) => t.research)
@@ -146,7 +146,7 @@ export class WebAgent implements Agent {
       );
       return {
         topicId: topic.id,
-        topicLabel: `${topic.label}（研究ハブ: HN/arXiv/GitHub/RSS）`,
+        topicLabel: `${topic.label}（研究補強: HN/arXiv/GitHub/RSS/Hugging Face）`,
         url: `research-hub://${topic.id}`,
         content: formatResearchBlock(result.items),
       };
