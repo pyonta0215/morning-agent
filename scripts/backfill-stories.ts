@@ -27,6 +27,7 @@ import {
 import { assignArticlesToStories, type AssignableArticle } from '../src/agents/storyAgent.js';
 import { catchAllWarnings } from '../src/utils/storyMetrics.js';
 import { storyTopicIds } from '../src/config/settings.js';
+import { dedupeByNormalizedUrl } from '../src/utils/articleDedupe.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // .env は丸ごと流し込まない。中の AWS_ACCESS_KEY_ID（SES用）が ~/.aws のプロファイルより
@@ -99,16 +100,20 @@ async function loadArchives(): Promise<RunArchive[]> {
 const STORY_TOPICS = storyTopicIds();
 
 function toArticles(archive: RunArchive): AssignableArticle[] {
-  return Object.entries(archive.byTopic)
+  const candidates = Object.entries(archive.byTopic)
     .filter(([topic]) => STORY_TOPICS.has(topic))
     .flatMap(([topic, items]) =>
-      items.map((i) => ({
-        id: articleId(i.url),
-        title: i.title,
-        summary: i.summary,
-        topic,
-      }))
+      items.map((item) => ({ ...item, topic }))
     );
+  return dedupeByNormalizedUrl(
+    candidates,
+    (candidate, current) => candidate.score > current.score
+  ).map((item) => ({
+    id: articleId(item.url),
+    title: item.title,
+    summary: item.summary,
+    topic: item.topic,
+  }));
 }
 
 async function main(): Promise<void> {

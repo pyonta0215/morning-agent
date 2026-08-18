@@ -31,6 +31,7 @@ import { loadNote } from './utils/notes.js';
 import { buildIdentity, type ArticleIdentity } from './utils/articleIdentity.js';
 import { saveEnrichedRun, loadEnrichedRun } from './utils/enrichedStore.js';
 import { normalizeUrl } from './utils/deliveredHistory.js';
+import { dedupeByNormalizedUrl } from './utils/articleDedupe.js';
 import { buildMorningEmail } from './email/morningEmail.js';
 
 function getS3Client(region: string): S3Client {
@@ -62,11 +63,32 @@ async function updateStoryLedger(
   }
 
   const storyTopics = new Set(topics.filter((t) => t.story).map((t) => t.id));
-  const articles: AssignableArticle[] = Object.entries(byTopic)
+  const articleCandidates = Object.entries(byTopic)
     .filter(([topic]) => storyTopics.has(topic))
     .flatMap(([topic, items]) =>
-      items.map((i) => ({ id: articleId(i.url), title: i.title, summary: i.summary, topic }))
+      items.map((item) => ({ ...item, topic }))
     );
+  const uniqueArticleCandidates = dedupeByNormalizedUrl(
+    articleCandidates,
+    (candidate, current) => candidate.score > current.score
+  );
+  const duplicateDropped = articleCandidates.length - uniqueArticleCandidates.length;
+  const articles: AssignableArticle[] = uniqueArticleCandidates.map((item) => ({
+    id: articleId(item.url),
+    title: item.title,
+    summary: item.summary,
+    topic: item.topic,
+  }));
+
+  if (duplicateDropped > 0) {
+    console.log(
+      JSON.stringify({
+        type: 'STORY_LEDGER_DUPLICATES_DROPPED',
+        todayIso,
+        count: duplicateDropped,
+      })
+    );
+  }
 
   if (articles.length === 0) {
     console.log(JSON.stringify({ type: 'STORY_LEDGER_SKIPPED', reason: 'no articles', todayIso }));

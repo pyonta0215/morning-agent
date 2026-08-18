@@ -4,6 +4,7 @@ import { handleWebFetch, type RssItemMeta } from '../tools/webFetchTool.js';
 import { collectResearch, formatResearchBlock, researchUrlSet } from '../tools/researchTool.js';
 import { logLlm, calcCost } from '../utils/llmLogger.js';
 import { normalizeUrl, type DeliveredItem } from '../utils/deliveredHistory.js';
+import { dedupeByNormalizedUrl } from '../utils/articleDedupe.js';
 
 const MODEL = 'claude-haiku-4-5-20251001';
 
@@ -236,18 +237,26 @@ ${fetchedContent}`,
         // structured outputs によりスキーマ準拠のJSON（トピックID別オブジェクト）が保証される
         const parsed = JSON.parse(textBlock.text) as Record<string, SummaryItem[]>;
         let rescued = 0;
+        let duplicateDropped = 0;
         // 救済の下限に届かず空のままにしたトピック数。ここが常に高いソースは足しても無駄
         let dropped = 0;
         for (const topic of input.config.topics) {
           // origin は「研究ハブが返したURLと一致し、かつ直fetchの取得テキストに存在しない」で判定する。
           // 研究ハブのURLはモデルの出力を経由せずコード側に残っているため実在が保証される
-          const raw = (parsed[topic.id] ?? []).map((it) => ({
+          const candidates = (parsed[topic.id] ?? []).map((it) => ({
             ...it,
             topic: topic.id,
             origin: (researchUrls.has(normalizeUrl(it.url)) && !fetchOnlyContent.includes(it.url)
               ? 'research'
               : 'fetch') as 'research' | 'fetch',
           }));
+          // 集約モデルが同じ記事を複数回返しても、上限判定より前に1件へ畳む。
+          // スコアが違う場合は高い方を残し、同点ならモデル出力の先頭を維持する。
+          const raw = dedupeByNormalizedUrl(
+            candidates,
+            (candidate, current) => candidate.score > current.score
+          );
+          duplicateDropped += candidates.length - raw.length;
           // スコア閾値以上を全件採用。閾値超えが無いが候補はあるトピックは最高スコア1件を救済（空トピック=崩壊を防ぐ）
           let kept = raw.filter((i) => i.score >= SCORE_THRESHOLD);
           if (kept.length === 0 && raw.length > 0) {
@@ -267,7 +276,7 @@ ${fetchedContent}`,
         const topicCount = Object.values(data.byTopic).filter((v) => v.length > 0).length;
         const researchCount = allItems.filter((i) => i.origin === 'research').length;
         console.log(
-          `[WebAgent] parsed: ${topicCount} topics, ${itemCount} items (threshold>=${SCORE_THRESHOLD}, rescued ${rescued}, 低スコアで見送り ${dropped}, research由来 ${researchCount})`
+          `[WebAgent] parsed: ${topicCount} topics, ${itemCount} items (threshold>=${SCORE_THRESHOLD}, rescued ${rescued}, 低スコアで見送り ${dropped}, 同一URL重複${duplicateDropped}件除外, research由来 ${researchCount})`
         );
       } catch (err) {
         console.warn(`[WebAgent] Failed to parse summary response as JSON: ${(err as Error).message}`);
@@ -290,7 +299,7 @@ ${fetchedContent}`,
       webSearchTokens = r.inputTokens + r.outputTokens;
     }
 
-    // 最終セーフティネット: 配信済みURLが紛れ込んでいたら除去（続報は新URLなので残る）
+    // 最終セーフティネット1: 配信済みURLが紛れ込んでいたら除去（続報は新URLなので残る）
     for (const [topicId, items] of Object.entries(data.byTopic)) {
       const filtered = items.filter((i) => !deliveredUrls.has(normalizeUrl(i.url)));
       if (filtered.length !== items.length) {
@@ -299,6 +308,21 @@ ${fetchedContent}`,
         );
       }
       data.byTopic[topicId] = filtered;
+    }
+
+    // 最終セーフティネット2: web_search合流後も含め、同一実行内ではURLを一意にする。
+    // トピックを跨いだ重複は高スコアを優先し、同点ならtopics.yamlの先行トピックを残す。
+    const beforeCurrentRunDedup = Object.values(data.byTopic).flat();
+    const uniqueCurrentRun = dedupeByNormalizedUrl(
+      input.config.topics.flatMap((topic) => data.byTopic[topic.id] ?? []),
+      (candidate, current) => candidate.score > current.score
+    );
+    data.byTopic = Object.fromEntries(input.config.topics.map((topic) => [topic.id, []]));
+    for (const item of uniqueCurrentRun) data.byTopic[item.topic].push(item);
+    for (const items of Object.values(data.byTopic)) items.sort((a, b) => b.score - a.score);
+    const currentRunDuplicates = beforeCurrentRunDedup.length - uniqueCurrentRun.length;
+    if (currentRunDuplicates > 0) {
+      console.log(`[WebAgent] dropped ${currentRunDuplicates} duplicate items within current run`);
     }
 
     return {
@@ -351,17 +375,18 @@ ${fetchedContent}`,
         ...existing.map((i) => distinctiveTokens(i.title)),
         ...pickRecentDeliveredTitles(delivered, dateStr, t.id).map(distinctiveTokens),
       ];
-      const seen = new Set(existing.map((i) => i.url));
+      const seen = new Set(existing.map((i) => normalizeUrl(i.url)));
       let added = 0;
       let topicalDropped = 0;
       for (const item of res.items) {
-        if (seen.has(item.url)) continue;
+        const normalizedUrl = normalizeUrl(item.url);
+        if (seen.has(normalizedUrl)) continue;
         if (isTopicalDup(item.title, priorTokenSets)) {
           topicalDropped++;
           continue;
         }
         existing.push(item);
-        seen.add(item.url);
+        seen.add(normalizedUrl);
         added++;
       }
       data.byTopic[t.id] = existing;

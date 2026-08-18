@@ -9,7 +9,8 @@
     "test:site-auth": "node infra/functions/site-auth.test.mjs",
     "test:site-data": "npx tsx scripts/test-site-data.ts",
     "test:feed-parse": "npx tsx scripts/test-feed-parse.ts",
-    "test": "npm run test:site-auth && npm run test:site-data && npm run test:feed-parse",
+    "test:dedup": "npx tsx scripts/test-dedup.ts",
+    "test": "npm run test:site-auth && npm run test:site-data && npm run test:feed-parse && npm run test:dedup",
     "deploy": "npm run build && cd infra && npx cdk deploy --all",
     "test-run": "npx tsx scripts/test-run.ts",
     "oauth-setup": "npx tsx scripts/oauth-setup.ts"
