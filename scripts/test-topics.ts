@@ -25,6 +25,22 @@ check('ai は既存どおりストーリー対象', storyIds.has('ai'));
 check('ai_oss は観測中のためストーリー対象外', !storyIds.has('ai_oss'));
 check('ai_model は観測中のためストーリー対象外', !storyIds.has('ai_model'));
 
+const aiOss = byId.get('ai_oss');
+check(
+  'ai_oss はHNの実装系クエリを検索する',
+  aiOss?.research?.search?.sources?.length === 1 &&
+    aiOss.research.search.sources[0] === 'hackernews' &&
+    (aiOss.research.search.queries?.length ?? 0) >= 3,
+  aiOss?.research?.search
+);
+check(
+  'ai_oss はGitHubの週次トレンドを観測する',
+  aiOss?.research?.trending?.some(
+    (item) => item.source === 'github' && item.period === 'week' && item.limit === 5
+  ) === true,
+  aiOss?.research?.trending
+);
+
 const aiFamily = ['ai', 'ai_oss', 'ai_model'].map((id) => byId.get(id));
 check('AI系3トピックが定義されている', aiFamily.every(Boolean), aiFamily);
 check(

@@ -44,6 +44,20 @@ topics:
     maxItems: 3
     keywords: []
     urls: []
+    # 2026-08-18〜、2週間の観測枠（#22）。通常のニュース検索では上がらない
+    # 実装レイヤを、HNの具体語検索とGitHubの急成長リポジトリから拾う。
+    # releases.atom はrc・パッチ版が毎日流れるため、観測で不足すると分かるまで足さない。
+    research:
+      search:
+        queries: [vLLM, MCP, agent framework]
+        sources: [hackernews]
+        since: 7d
+        limit: 3
+      trending:
+        - source: github
+          category: python
+          period: week
+          limit: 5
 
   # モデルのリリースと性能。収集源は #23 で足し、#24 の手順で2週間観測する。
   - id: ai_model
