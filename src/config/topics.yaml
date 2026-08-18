@@ -10,9 +10,13 @@ topics:
   # これは「game と finance に流れが無い」という主張ではなく、いまのトピック粒度では
   # ストーリーとして成立しないという判断。トピックを細分化すれば将来また true にできる。
   # story: false のトピックも紙面には従来どおり載る（台帳に載らないだけ）。
+  # maxItems: 1回の紙面に載せる最大件数。未指定時は8件。
   - id: ai
-    label: AI・LLM
+    label: AI企業・業界
     story: true
+    # ai_oss / ai_model を増やしても紙面全体が急増しないよう、AI系3枠で最大12件に抑える。
+    # 既存枠は実測の87%を占める企業動向・報道なので6件、新規の観測枠は各3件。
+    maxItems: 6
     # webSearch補強は2週間観測（6/22-7/3実測）で良質な純寄与0のため無効化（2026-07-03）。
     # 供給はfetch（Google News/RSS）が鮮度・質とも上位互換。再有効化は webSearch: true を戻すだけ。
     keywords: [Claude, GPT, Gemini, LLM, 生成AI]
@@ -31,6 +35,23 @@ topics:
         sources: [hackernews]
         since: 2d
         limit: 3
+
+  # 実装・ツール・推論ランタイム。収集源は #22 で足し、#24 の手順で2週間観測する。
+  # 観測期間中はストーリー台帳に入れず、継続する話題として成立するかを先に測る。
+  - id: ai_oss
+    label: AI OSS・実装
+    story: false
+    maxItems: 3
+    keywords: []
+    urls: []
+
+  # モデルのリリースと性能。収集源は #23 で足し、#24 の手順で2週間観測する。
+  - id: ai_model
+    label: AIモデル
+    story: false
+    maxItems: 3
+    keywords: []
+    urls: []
 
   - id: finance
     label: 金融・投資
@@ -84,4 +105,3 @@ topics:
       # 欧州委員会。AI Act の施行・透明性ガイドライン・DSA の制裁がここから出る。
       # AI以外（域内メディア支援・人材育成）も流れるが、スコアで落ちる
       - https://digital-strategy.ec.europa.eu/en/rss.xml
-

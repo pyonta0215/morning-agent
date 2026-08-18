@@ -269,7 +269,7 @@ ${fetchedContent}`,
             }
           }
           kept.sort((a, b) => b.score - a.score);
-          data.byTopic[topic.id] = kept.slice(0, MAX_ITEMS_PER_TOPIC);
+          data.byTopic[topic.id] = kept.slice(0, topic.maxItems ?? MAX_ITEMS_PER_TOPIC);
         }
         const allItems = Object.values(data.byTopic).flat();
         const itemCount = allItems.length;

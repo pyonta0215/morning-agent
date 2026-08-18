@@ -27,6 +27,8 @@ export interface Topic {
   label: string;
   urls: string[];
   keywords: string[];
+  /** 1回の紙面に載せる最大件数。未指定時は全体既定値を使う */
+  maxItems?: number;
   /** true のトピックのみ web_search による鮮度補強を行う */
   webSearch?: boolean;
   /**
