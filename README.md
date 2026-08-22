@@ -1,16 +1,20 @@
 # morning-agent
 
-毎朝7時に Web からニュース・情報を収集し、ブリーフィングメールを自動送信する AWS Lambda エージェント。
+毎朝6:15にニュースを収集し、6:25に閲覧サイトを更新、6:30にブリーフィングメールを送る
+AWS Lambdaエージェント。収集結果とストーリー台帳を蓄積し、紙面とメールはそこから決定的に生成する。
 
 ## 使用 LLM
 
-**claude-sonnet-4-20250514** (Web 収集・メール生成の両フェーズで使用)
+**claude-haiku-4-5-20251001**
+
+LLMを呼ぶのはcollectフェーズのWeb集約とストーリー割当だけ。publishとnotifyはLLMを呼ばない。
 
 ## 技術スタック
 
 - Node.js 22.x / TypeScript 5.x
-- AWS Lambda + EventBridge Scheduler (JST 07:00 = UTC 22:00)
-- Claude API (Anthropic SDK) — claude-sonnet-4-20250514
+- AWS Lambda + EventBridge Scheduler（JST 6:15 / 6:25 / 6:30）
+- Claude API (Anthropic SDK) — claude-haiku-4-5-20251001
+- Amazon S3 + CloudFront（アーカイブ、ストーリー台帳、閲覧サイト）
 - AWS SES (メール送信)
 
 ## 初回セットアップ
@@ -29,7 +33,8 @@ cp .env.example .env
 #   ANTHROPIC_API_KEY   : Anthropic コンソールから取得
 #   RECIPIENT_EMAIL     : 受信メールアドレス
 #   SENDER_EMAIL        : SES で Verify 済みの送信元アドレス
-#   AWS_REGION          : ap-northeast-1 (デフォルト)
+#   AWS_REGION          : ap-northeast-1（Lambda / SSM / 蓄積用S3）
+#   SES_REGION          : us-east-1（本番と同じSES identity）
 ```
 
 ### 3. AWS 認証情報の確認
@@ -55,24 +60,28 @@ aws configure  # アクセスキーを入力
 SES サンドボックス環境では、送信元・送信先の両アドレスを Verify する必要があります。
 
 ```bash
-aws ses verify-email-identity --email-address sender@example.com --region ap-northeast-1
-aws ses verify-email-identity --email-address your@example.com --region ap-northeast-1
+aws ses verify-email-identity --email-address sender@example.com --region us-east-1
+aws ses verify-email-identity --email-address your@example.com --region us-east-1
+
+# 検証状態を確認（VerificationStatus が Success になること）
+aws ses get-identity-verification-attributes --region us-east-1 \
+  --identities sender@example.com your@example.com
 ```
 
-### 4. ローカル動作確認
+### 5. ローカル動作確認
 
 ```bash
 # SES 疎通テスト（パイプライン不使用、テストメールのみ送信）
 npx tsx scripts/test-run.ts --test-email
 
-# ドライラン（Web 収集 + メール生成、送信はスキップ）
+# ドライラン（collect → publish → notify、メール送信だけをスキップ）
 npx tsx scripts/test-run.ts --dry-run
 
-# 全体実行（Web 収集 → メール生成 → SES 送信）
+# 全体実行（collect → publish → notify）
 npm run test-run
 ```
 
-### 5. ビルド & AWS デプロイ
+### 6. ビルド & AWS デプロイ
 
 事前に SSM Parameter Store へ必要な値を登録してください:
 
@@ -82,8 +91,6 @@ aws ssm put-parameter --name /morning-agent/recipient-email \
   --value "your@email.com" --type String --region ap-northeast-1
 aws ssm put-parameter --name /morning-agent/sender-email \
   --value "sender@example.com" --type String --region ap-northeast-1
-aws ssm put-parameter --name /morning-agent/delivery-time \
-  --value "07:00" --type String --region ap-northeast-1
 aws ssm put-parameter --name /morning-agent/anthropic-api-key \
   --value "sk-ant-..." --type SecureString --region ap-northeast-1
 ```
@@ -102,31 +109,10 @@ npx cdk bootstrap aws://ACCOUNT_ID/ap-northeast-1
 ```
 
 **リージョン構成:**
-- Lambda / SSM: `ap-northeast-1` (東京)
-- SES: `us-east-1` (バージニア) — 送信元ドメインをこのリージョンで Verify する
-- Lambda の環境変数 `SES_REGION=us-east-1` で自動切り替え
-
-## Enhanced Editorial（朝刊→夕刊の継続性）
-
-`ENHANCED_EDITORIAL=true` を設定すると、朝刊で選んだ注目記事を夕刊の編集プロンプトに注入します。
-
-**効果**: 夕刊が朝刊の内容を踏まえた選出・コメントになる（重複回避・続報補足）
-
-**有効化**:
-```bash
-# ローカル: .env に追記
-ENHANCED_EDITORIAL=true
-
-# Lambda 本番環境:
-aws lambda update-function-configuration \
-  --function-name MorningAgentFunction \
-  --environment Variables="{ENHANCED_EDITORIAL=true,...}"
-```
-
-**仕組み**: 朝刊収集時に `context/morning.json` を S3 に保存。夕刊収集時に読み込んでプロンプトに注入。
-S3 ロード失敗時は従来通りの動作にフォールバックします。
-
-設計の詳細と Managed Agents 評価については [`docs/managed-agents-evaluation.md`](docs/managed-agents-evaluation.md) を参照。
+- Lambda / SSM / 蓄積用S3: `ap-northeast-1`（東京）
+- SES / 閲覧サイト用S3 / CloudFront証明書: `us-east-1`（バージニア）
+- SES identityは必ず `us-east-1` でVerifyする。Lambdaは `SES_REGION=us-east-1` を設定し、
+  ローカルの `--test-email` も `.env` の同じ値を使う
 
 ## 外部研究ソース補強（Hacker News / arXiv / GitHub / RSS / Hugging Face）
 
@@ -166,7 +152,7 @@ MCP プロトコルは介さず、service 層（`search` / `trending`）を直�
 |---|---|
 | `ENABLE_RESEARCH_HUB` | `true` で補強を有効化 |
 | `RESEARCH_HUB_FEEDS` | 購読リストの絶対パス。**バンドル後は自力解決できないため必須**（未指定だと rss ソースが常時0件になる） |
-| `RESEARCH_HUB_CACHE` | `off` 推奨。TTL 5〜15分のキャッシュは1日2回の実行では再利用余地がない |
+| `RESEARCH_HUB_CACHE` | `off` 推奨。TTL 5〜15分のキャッシュは日次収集では再利用余地がない |
 
 **計測**: 採用記事には取得経路が `origin` として付きます。`origin: 'research'` は
 「外部研究ソースが返し、かつ直 fetch のテキストには存在しなかった」記事＝**純寄与**を意味します
@@ -177,8 +163,8 @@ MCP プロトコルは介さず、service 層（`search` / `trending`）を直�
 | コマンド | 内容 |
 |---|---|
 | `npx tsx scripts/test-run.ts --test-email` | SES 疎通テスト（テストメールのみ送信） |
-| `npx tsx scripts/test-run.ts --dry-run` | 全パイプライン実行、メール送信のみスキップ |
-| `npm run test-run` | 全体実行（Web 収集 → 生成 → SES 送信） |
+| `npx tsx scripts/test-run.ts --dry-run` | collect → publish → notifyを順に実行し、メール送信のみスキップ |
+| `npm run test-run` | collect → publish → notifyを順に実行 |
 
 ## 動作フロー
 
@@ -208,6 +194,10 @@ Lambda は1本で、EventBridge Scheduler から `phase` を変えて3回呼ば�
 
 ローカルで通しで動かすときは `phase` を付けずに呼べば3つ順に走る（`DRY_RUN=true` で送信を抑止）。
 
+> この節はdefault branchの実装を説明している。本番への3フェーズ反映確認は
+> [Issue #9](https://github.com/pyonta0215/morning-agent/issues/9) で管理し、確認が完了するまでは
+> 「本番反映済み」とは扱わない。
+
 ## トピック設定
 
 `src/config/topics.yaml` を編集して収集対象を変更できます:
@@ -233,11 +223,18 @@ topics:
 src/
   index.ts                  # Lambda エントリポイント
   orchestrator/
-    pipeline.ts             # 並列収集 → 直列合成 パイプライン
+    pipeline.ts             # 収集エージェントの実行パイプライン
   agents/
     base.ts                 # Agent インターフェース & 型定義
-    webAgent.ts             # Web 収集エージェント (tool_use ループ)
-    composerAgent.ts        # メール生成・送信エージェント
+    webAgent.ts             # Web・検索・外部研究ソースの収集と集約（Haiku 4.5）
+    storyAgent.ts           # 記事を継続ストーリーへ割り当て（Haiku 4.5）
+    gmailAgent.ts           # Gmail収集の試作。現在のmainパイプラインには未登録
+    calendarAgent.ts        # Calendar収集の試作。現在のmainパイプラインには未登録
+  email/
+    morningEmail.ts         # 台帳差分からメールを決定的に生成（LLMなし）
+  site/
+    siteData.ts             # アーカイブと台帳から紙面データを生成（LLMなし）
+    publish.ts              # 閲覧サイトをS3へ公開
   tools/
     webFetchTool.ts         # fetch_webpage ツール定義 & ハンドラー
     researchTool.ts         # research-hub アダプタ（HN/arXiv/GitHub/RSS の取得と正規化）
@@ -256,7 +253,7 @@ infra/
   bin/app.ts                # CDK アプリエントリポイント
   lib/
     lambdaStack.ts          # Lambda + IAM 最小権限
-    schedulerStack.ts       # EventBridge Scheduler (JST 07:00)
+    schedulerStack.ts       # EventBridge Scheduler (JST 6:15 / 6:25 / 6:30)
 ```
 
 ## ログ形式 (CloudWatch Logs Insights)
@@ -268,11 +265,14 @@ LLM 呼び出しは以下の構造化 JSON でログ出力されます:
   "type": "LLM_CALL",
   "traceId": "<Lambda RequestId>",
   "agentId": "web",
-  "model": "claude-sonnet-4-20250514",
+  "model": "claude-haiku-4-5-20251001",
   "inputTokens": 10485,
   "outputTokens": 2990,
-  "costUsd": 0.076305,
+  "costUsd": 0.025435,
   "durationMs": 54874,
   "success": true
 }
 ```
+
+`costUsd` は `src/utils/llmLogger.ts` の単価を正とし、Haiku 4.5は入力 $1 / 1M tokens、
+出力 $5 / 1M tokensで計算する。Claudeの `web_search` を使った場合は1検索 $0.01を加算する。
