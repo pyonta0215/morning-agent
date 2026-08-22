@@ -31,7 +31,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 // .env のAWSキーはSES送信用でS3権限がないため、~/.aws の default プロファイルに委ねる。
-// AWS_REGION も SES 用（us-east-1）なのでS3には使わない（バケットは ap-northeast-1）
+// アーカイブ用S3は ap-northeast-1 と明示し、SES_REGION（us-east-1）とは分ける。
 delete process.env.AWS_ACCESS_KEY_ID;
 delete process.env.AWS_SECRET_ACCESS_KEY;
 
