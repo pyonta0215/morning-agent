@@ -43,14 +43,15 @@ export async function loadConfig(): Promise<FullConfig> {
   const region = process.env.AWS_REGION ?? 'ap-northeast-1';
   const topics = loadTopics();
 
-  const sesRegion = process.env.SES_REGION ?? region;
+  // このプロジェクトのSES identityはus-east-1を正とする。
+  // Lambdaとローカル実行でAWS_REGION（東京）へ誤ってフォールバックさせない。
+  const sesRegion = process.env.SES_REGION ?? 'us-east-1';
 
   // ローカル開発時: process.env を優先して AWS APIをスキップ
   if (process.env.LOCAL_DEV === 'true') {
     return {
       recipientEmail: process.env.RECIPIENT_EMAIL ?? '',
       senderEmail: process.env.SENDER_EMAIL ?? '',
-      deliveryTime: process.env.DELIVERY_TIME ?? '07:00',
       sesRegion,
       awsRegion: region,
       topics,
@@ -58,10 +59,9 @@ export async function loadConfig(): Promise<FullConfig> {
   }
 
   // 本番: SSM Parameter Store から取得
-  const [recipientEmail, senderEmail, deliveryTime, anthropicApiKey] = await Promise.all([
+  const [recipientEmail, senderEmail, anthropicApiKey] = await Promise.all([
     getParameter('/morning-agent/recipient-email', region),
     getParameter('/morning-agent/sender-email', region),
-    getParameter('/morning-agent/delivery-time', region),
     getParameter('/morning-agent/anthropic-api-key', region),
   ]);
 
@@ -70,7 +70,6 @@ export async function loadConfig(): Promise<FullConfig> {
   return {
     recipientEmail,
     senderEmail,
-    deliveryTime,
     sesRegion,
     awsRegion: region,
     topics,
