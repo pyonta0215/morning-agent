@@ -161,15 +161,27 @@
   .arts .m .src { color: var(--sub); font-weight: 700; margin-right: 8px; }
   .arts li.read { opacity: .58; }
   .arts li.read .h::before { content: "既読"; font-family: var(--gothic); font-size: 9px; color: var(--mute); margin-right: 7px; }
-  .article-detail { margin-top: 5px; }
+  .article-detail { margin-top: 10px; }
   .article-detail > summary {
-    width: max-content; min-height: 34px; display: flex; align-items: center; cursor: pointer;
-    color: var(--accent); font-size: 11px; list-style: none; border-bottom: 1px solid #d8b7b3;
+    width: max-content; min-height: 40px; margin-left: auto; padding: 7px 10px;
+    display: flex; align-items: center; gap: 8px; cursor: pointer;
+    color: var(--ink); background: #f3f0e9; border: 1px solid var(--line);
+    font-size: 12px; font-weight: 700; list-style: none;
   }
   .article-detail > summary::-webkit-details-marker { display: none; }
-  .article-detail > summary::after { content: "＋"; margin-left: 6px; }
-  .article-detail[open] > summary::after { content: "−"; }
-  .article-detail .s { margin-top: 7px; }
+  .article-detail > summary::before {
+    content: "要"; display: grid; place-items: center; width: 24px; height: 24px; flex: 0 0 auto;
+    background: var(--ink); color: #fff; font-family: var(--mincho); font-size: 12px;
+  }
+  .article-detail > summary::after { content: "⌄"; margin-left: auto; color: var(--sub); font-size: 16px; line-height: 1; }
+  .article-detail[open] > summary::after { content: "⌃"; }
+  .article-detail .summary-state { margin-left: 2px; color: var(--mute); font-size: 10px; font-weight: 400; }
+  .article-detail .when-open { display: none; }
+  .article-detail[open] .when-closed { display: none; }
+  .article-detail[open] .when-open { display: inline; }
+  .article-detail[open] > summary { background: #ebe7df; border-color: #c9c3b9; }
+  .summary-body { margin-top: 6px; padding: 11px 12px; border: 1px solid var(--line); background: #f3f0e9; }
+  .article-detail .s { margin: 0; color: var(--ink); }
   .article-actions { margin-top: 8px; }
   .article-actions a { color: var(--accent); font-size: 12px; font-weight: 700; text-decoration: none; }
   .list-tools { display: flex; justify-content: flex-end; margin: -2px 0 4px; }
@@ -276,7 +288,11 @@
     .arts .h { font-size: 17px; line-height: 1.55; }
     .arts .s { font-size: 14px; line-height: 1.65; }
     .arts .m { font-size: 12px; line-height: 1.65; letter-spacing: .02em; }
-    .article-detail > summary { min-height: 44px; font-size: 13px; }
+    .article-detail { margin-top: 11px; }
+    .article-detail > summary { min-height: 48px; padding: 9px 11px; font-size: 14px; }
+    .article-detail > summary::before { width: 27px; height: 27px; font-size: 13px; }
+    .article-detail .summary-state { font-size: 11px; }
+    .summary-body { margin-top: 7px; padding: 12px 13px; }
     .today-summary { gap: 6px; margin-bottom: 18px; }
     .today-summary button { min-height: 70px; padding: 9px; font-size: 11px; }
     .today-summary b { font-size: 19px; }
@@ -786,9 +802,10 @@
         (isRead(a.id) ? '' : '<span class="unread-dot" aria-label="未読"></span>') + esc(a.title) + '</div>' +
         '<div class="m"><span class="tp">' + esc(TOPIC[a.topic] || a.topic) + '</span>' +
         source(a) + (withImportance ? '重要度 ' + '●'.repeat(a.score) + '○'.repeat(Math.max(0, 5 - a.score)) + '　' : '') +
-        published(a) + '</div><details class="article-detail"' + (open ? ' open' : '') + '><summary>要約を見る</summary>' +
-        '<div class="s">' + esc(a.summary) + '</div><div class="article-actions"><a href="' + esc(a.url) +
-        '" target="_blank" rel="noopener" data-read-id="' + esc(a.id) + '">元記事を開く ↗</a></div></details></li>';
+        published(a) + '</div><details class="article-detail"' + (open ? ' open' : '') + '><summary><span>記事の要点</span>' +
+        '<span class="summary-state when-closed">タップして表示</span><span class="summary-state when-open">表示中</span></summary>' +
+        '<div class="summary-body"><div class="s">' + esc(a.summary) + '</div><div class="article-actions"><a href="' + esc(a.url) +
+        '" target="_blank" rel="noopener" data-read-id="' + esc(a.id) + '">元記事を開く ↗</a></div></div></details></li>';
   }
 
   // ── 今日の紙面
