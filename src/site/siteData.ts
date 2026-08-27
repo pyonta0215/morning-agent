@@ -11,7 +11,7 @@
  * paper/data.json  非公開。記事の要約・ストーリーの中身・過去号
  * ```
  *
- * 認証（CloudFront Function）を唯一の防壁にしないための分離。
+ * 認証 Lambda を唯一の防壁にしないための分離。
  * 公開ファイルに何が入っているかは {@link assertOverviewIsPublicSafe} が検査する。
  */
 import type { RunArchive } from '../utils/runArchive.js';
@@ -24,7 +24,7 @@ import type { ArticleIdentity } from '../utils/articleIdentity.js';
 export interface SiteFile {
   /** バケット内のキー。URLのパスと1対1で対応させる */
   key: string;
-  body: string;
+  body: string | Uint8Array;
   contentType: string;
   /** 更新は1日1回なので、無効化ではなくこれで新しさを担保する */
   cacheControl: string;
@@ -289,7 +289,7 @@ export function buildSiteFiles(
       cacheControl: SHORT_CACHE,
     },
     {
-      // 認証の内側。CloudFront Function の PUBLIC_PATHS に入れないこと
+      // 認証の内側。CloudFront の /paper/data.json behavior から Lambda へ送ること
       key: 'paper/data.json',
       body: JSON.stringify(paper),
       contentType: 'application/json; charset=utf-8',

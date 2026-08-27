@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="104" fill="#14110e"/>
+  <circle cx="256" cy="190" r="112" fill="#a81a12"/>
+  <path d="M92 316h328v18H92zm0 42h328v12H92zm0 36h216v12H92z" fill="#fbfaf6"/>
+  <text x="256" y="276" fill="#fbfaf6" font-size="206" font-weight="700" text-anchor="middle" font-family="Hiragino Mincho ProN,Yu Mincho,serif">朝</text>
+</svg>

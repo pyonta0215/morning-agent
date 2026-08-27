@@ -4,6 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#fbfaf6">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="朝刊便">
+<link rel="manifest" href="/paper/manifest.webmanifest">
+<link rel="icon" href="/paper/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/paper/apple-touch-icon.png">
 <title>朝刊エージェント便 ／ 紙面</title>
 <style>
   :root {
@@ -38,6 +45,15 @@
     font-size: 10.5px; color: var(--sub); letter-spacing: .08em;
     padding: 5px 2px; border-bottom: 1px solid var(--ink);
   }
+  .auth-action {
+    border: 0; border-bottom: 1px solid var(--line); background: transparent; color: var(--sub);
+    padding: 0; font: inherit; letter-spacing: .08em; cursor: pointer;
+  }
+  .auth-action:hover { color: var(--accent); border-bottom-color: var(--accent); }
+  .err .retry {
+    display: block; margin-top: 12px; border: 1px solid var(--accent); background: transparent;
+    color: var(--accent); padding: 7px 12px; font: inherit; cursor: pointer;
+  }
 
   /* ── タブ ── */
   .tabs { display: flex; flex-wrap: wrap; align-items: flex-end; border-bottom: 2px solid var(--ink); margin-top: 14px; }
@@ -53,6 +69,7 @@
     font-family: var(--gothic); font-size: 12.5px; padding: 5px 10px; width: 210px;
     border: 1px solid var(--line); background: #fff; color: var(--ink); border-radius: 0;
   }
+  .tabs .search-tab { display: none; }
   @media (max-width: 640px) { .tabs .search { margin: 8px 0 0; width: 100%; } .tabs input { width: 100%; } }
 
   h2.sec {
@@ -95,6 +112,7 @@
   /* ── きょう動いた話題 ── */
   .moved { list-style: none; margin: 0; padding: 0; }
   .moved li { padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .moved li[data-story] { cursor: pointer; }
   .moved b { display: block; font-family: var(--mincho); font-size: 14px; line-height: 1.5; font-weight: 700; }
   .moved .note { font-size: 10.5px; color: var(--mute); letter-spacing: .04em; }
   .badge { display: inline-block; font-size: 9.5px; font-weight: 700; letter-spacing: .12em;
@@ -141,6 +159,30 @@
   .arts .m { font-size: 10px; color: var(--mute); letter-spacing: .1em; margin-top: 4px; }
   .arts .m .tp { color: var(--accent); font-weight: 700; margin-right: 8px; }
   .arts .m .src { color: var(--sub); font-weight: 700; margin-right: 8px; }
+  .arts li.read { opacity: .58; }
+  .arts li.read .h::before { content: "既読"; font-family: var(--gothic); font-size: 9px; color: var(--mute); margin-right: 7px; }
+  .article-detail { margin-top: 5px; }
+  .article-detail > summary {
+    width: max-content; min-height: 34px; display: flex; align-items: center; cursor: pointer;
+    color: var(--accent); font-size: 11px; list-style: none; border-bottom: 1px solid #d8b7b3;
+  }
+  .article-detail > summary::-webkit-details-marker { display: none; }
+  .article-detail > summary::after { content: "＋"; margin-left: 6px; }
+  .article-detail[open] > summary::after { content: "−"; }
+  .article-detail .s { margin-top: 7px; }
+  .article-actions { margin-top: 8px; }
+  .article-actions a { color: var(--accent); font-size: 12px; font-weight: 700; text-decoration: none; }
+  .list-tools { display: flex; justify-content: flex-end; margin: -2px 0 4px; }
+  .filter-unread {
+    min-height: 38px; padding: 6px 11px; border: 1px solid var(--line); background: #fff;
+    color: var(--sub); font: 12px var(--gothic); cursor: pointer;
+  }
+  .filter-unread[aria-pressed="true"] { color: #fff; background: var(--ink); border-color: var(--ink); }
+  .subnav-action { display: none; }
+  .unread-dot { display: inline-block; width: 7px; height: 7px; margin: 0 7px 1px 0; border-radius: 50%; background: var(--accent); }
+  .today-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 12px 0 22px; }
+  .today-summary button { padding: 11px; border: 1px solid var(--line); background: #fff; color: var(--sub); text-align: left; cursor: pointer; font: 11px var(--gothic); }
+  .today-summary b { display: block; margin-top: 2px; color: var(--ink); font-family: var(--mincho); font-size: 20px; }
 
   .daybar { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 4px; }
   .daybar button {
@@ -168,6 +210,84 @@
   .muted { font-size: 12.5px; color: var(--mute); padding: 18px 0; }
   .err { font-size: 13px; color: var(--accent); padding: 24px 0; }
   [hidden] { display: none !important; }
+
+  @media (max-width: 640px) {
+    body { padding-bottom: calc(61px + env(safe-area-inset-bottom)); line-height: 1.65; }
+    .sheet { padding: 12px 17px 38px; }
+    .masthead .name { font-size: 21px; }
+    .masthead .sub { display: none; }
+    .colophon { display: block; font-size: 11px; line-height: 1.55; }
+    .colophon > span { display: block; }
+    #stat { margin-right: 8px; }
+
+    .tabs {
+      position: fixed; z-index: 20; left: 0; right: 0; bottom: 0; margin: 0;
+      padding-bottom: env(safe-area-inset-bottom); flex-wrap: nowrap; align-items: stretch;
+      border-top: 1px solid var(--line); border-bottom: 0; background: rgba(251,250,246,.97);
+      box-shadow: 0 -4px 16px rgba(20,17,14,.08); backdrop-filter: blur(10px);
+    }
+    .tabs button {
+      flex: 1; min-width: 0; min-height: 56px; margin: 0; padding: 8px 3px 6px;
+      border: 0; background: transparent; font-family: var(--gothic); font-size: 12px;
+      letter-spacing: .02em; text-indent: 0;
+    }
+    .tabs button[aria-selected="true"] { background: transparent; color: var(--accent); box-shadow: inset 0 3px var(--accent); }
+    .tabs button[data-tab="today"] { order: 1; }
+    .tabs button[data-tab="flow"] { order: 2; }
+    .tabs button[data-tab="archive"] { order: 3; }
+    .tabs button[data-tab="terrain"] { display: none; }
+    .tabs .search { display: none; }
+    .tabs .search-tab { display: block; order: 4; }
+
+    h2.sec { margin-top: 22px; font-size: 14px; letter-spacing: .16em; align-items: center; }
+    h2.sec small { margin-left: auto; text-align: right; }
+    .front { display: flex; flex-direction: column; margin-top: 13px; }
+    .front > .side { order: -1; margin-top: 0; margin-bottom: 24px; }
+    .lead-title { font-size: 23px; }
+    .lead-meta { gap: 5px 13px; font-size: 12px; }
+    .tl { padding-left: 13px; }
+    .tl li { padding: 0 0 17px 15px; font-size: 16px; }
+    .tl li::before { left: -19px; }
+    .tl .d { font-size: 11px; }
+    .tl .sm { font-size: 14px; line-height: 1.65; }
+    .timeline-more { margin: 2px 0 16px; padding: 0 !important; font-family: var(--gothic) !important; }
+    .timeline-more::before { display: none; }
+    .timeline-more > details > summary { min-height: 44px; display: flex; align-items: center; color: var(--accent); font-size: 13px; cursor: pointer; }
+    .timeline-more .tl { margin-top: 8px; }
+    .moved li { position: relative; min-height: 62px; padding: 11px 28px 11px 0; }
+    .moved li[data-story]::after { content: "›"; position: absolute; right: 3px; top: 50%; transform: translateY(-50%); color: var(--mute); font-size: 23px; }
+    .moved b { font-size: 16px; }
+    .moved .note { display: block; margin-top: 3px; font-size: 12px; }
+    .badge { font-size: 10px; }
+
+    .gantt { display: block; }
+    .gantt colgroup, .gantt thead { display: none; }
+    .gantt tbody { display: grid; gap: 8px; }
+    .gantt tbody tr { display: grid; grid-template-columns: 1fr auto; min-height: 82px; padding: 12px; border: 1px solid var(--line); background: #fff; }
+    .gantt td { display: block; padding: 0; border: 0; }
+    .gantt td.t { grid-column: 1 / -1; padding-right: 4px; font-size: 16px; }
+    .gantt td.t em { font-size: 11px; margin-top: 5px; }
+    .gantt td:nth-child(2) { align-self: end; margin-top: 9px; }
+    .gantt td.n { align-self: end; margin-top: 9px; font-size: 12px; }
+    .gantt td.n::after { content: "記事"; margin-left: 2px; }
+    .gantt tbody tr[aria-selected="true"] { border-color: #d4a09b; }
+
+    .arts li { padding: 15px 0; }
+    .arts .h { font-size: 17px; line-height: 1.55; }
+    .arts .s { font-size: 14px; line-height: 1.65; }
+    .arts .m { font-size: 12px; line-height: 1.65; letter-spacing: .02em; }
+    .article-detail > summary { min-height: 44px; font-size: 13px; }
+    .today-summary { gap: 6px; margin-bottom: 18px; }
+    .today-summary button { min-height: 70px; padding: 9px; font-size: 11px; }
+    .today-summary b { font-size: 19px; }
+    .daybar { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 5px; scrollbar-width: none; }
+    .daybar::-webkit-scrollbar { display: none; }
+    .daybar button { flex: 0 0 auto; min-height: 44px; padding: 8px 13px; font-size: 13px; }
+    .terrain { margin-left: -17px; width: calc(100% + 34px); padding: 0 17px; }
+    .subnav-action { display: block; width: 100%; min-height: 48px; margin-top: 14px; border: 1px solid var(--line); background: #fff; color: var(--sub); font: 13px var(--gothic); }
+    #p-search .search-mobile { position: sticky; top: 0; z-index: 5; padding: 10px 0; background: var(--paper); }
+    #p-search input { width: 100%; min-height: 48px; padding: 10px 13px; border: 1px solid var(--ink); background: #fff; color: var(--ink); font-size: 16px; }
+  }
 </style>
 </head>
 <body>
@@ -179,15 +299,16 @@
   </div>
   <div class="colophon">
     <span id="date">読み込み中…</span>
-    <span id="stat"></span>
+    <span><span id="stat"></span> <button id="logout" class="auth-action" type="button" hidden>ログアウト</button></span>
   </div>
 
   <div class="tabs" role="tablist">
     <button role="tab" data-tab="flow" aria-selected="true">流れ</button>
-    <button role="tab" data-tab="today" aria-selected="false">今日の紙面</button>
-    <button role="tab" data-tab="archive" aria-selected="false">アーカイブ</button>
+    <button role="tab" data-tab="today" aria-selected="false">今日</button>
+    <button role="tab" data-tab="archive" aria-selected="false">過去</button>
     <button role="tab" data-tab="terrain" aria-selected="false">地形</button>
     <span class="search"><input id="q" type="search" placeholder="全文検索（見出し・要約）" autocomplete="off"></span>
+    <button role="tab" class="search-tab" data-tab="search" aria-selected="false">検索</button>
   </div>
 
   <div id="err" class="err" hidden></div>
@@ -215,6 +336,7 @@
       </tr></thead>
       <tbody id="gantt"></tbody>
     </table>
+    <button class="subnav-action" type="button" data-open-pane="terrain">分野ごとの地形を見る</button>
   </section>
 
   <!-- 今日の紙面 -->
@@ -236,6 +358,7 @@
 
   <!-- 検索結果 -->
   <section id="p-search" hidden>
+    <div class="search-mobile"><input id="q-mobile" type="search" placeholder="見出し・要約を検索" autocomplete="off"></div>
     <h2 class="sec">検索結果 <small id="search-n"></small></h2>
     <ul class="arts" id="search-body"></ul>
   </section>
@@ -250,6 +373,174 @@
     });
   };
   var D = null, ART = null, TOPIC = null;
+  var AUTH_CONFIG = null;
+  var READ_KEY = 'morning-agent.paper.read';
+  var VIEW_KEY = 'morning-agent.paper.view';
+  var unreadOnly = false;
+  var currentArchiveDate = null;
+
+  function readIds() {
+    try { return JSON.parse(localStorage.getItem(READ_KEY) || '[]'); } catch (_) { return []; }
+  }
+  function isRead(id) { return readIds().indexOf(id) !== -1; }
+  function markRead(id) {
+    var ids = readIds();
+    if (ids.indexOf(id) === -1) {
+      ids.push(id);
+      localStorage.setItem(READ_KEY, JSON.stringify(ids.slice(-1500)));
+    }
+    Array.prototype.forEach.call(document.querySelectorAll('[data-article="' + CSS.escape(id) + '"]'), function (el) {
+      el.classList.add('read');
+      var dot = el.querySelector('.unread-dot');
+      if (dot) dot.remove();
+      if (unreadOnly && el.closest('.arts')) el.hidden = true;
+    });
+  }
+
+  // Cognito Hosted UI（Authorization Code + PKCE）。パスワードも署名検証もこの画面では扱わない。
+  var TOKEN_KEY = 'morning-agent.paper.tokens';
+  var VERIFIER_KEY = 'morning-agent.paper.pkce.verifier';
+  var STATE_KEY = 'morning-agent.paper.pkce.state';
+
+  function base64Url(bytes) {
+    var str = '';
+    var arr = new Uint8Array(bytes);
+    for (var i = 0; i < arr.length; i++) str += String.fromCharCode(arr[i]);
+    return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+
+  function randomString(length) {
+    var bytes = new Uint8Array(length);
+    crypto.getRandomValues(bytes);
+    return base64Url(bytes.buffer);
+  }
+
+  function challenge(verifier) {
+    return crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)).then(base64Url);
+  }
+
+  function loadTokens() {
+    var raw = localStorage.getItem(TOKEN_KEY);
+    if (!raw) return null;
+    try { return JSON.parse(raw); } catch (_) { return null; }
+  }
+
+  function clearTokens() {
+    localStorage.removeItem(TOKEN_KEY);
+  }
+
+  function saveTokenResponse(json) {
+    if (!json.access_token || !json.expires_in) throw new Error('token response is incomplete');
+    var old = loadTokens();
+    localStorage.setItem(TOKEN_KEY, JSON.stringify({
+      access_token: json.access_token,
+      refresh_token: json.refresh_token || (old && old.refresh_token),
+      // 期限直前のリクエストを避けるため30秒早めに更新する
+      expires_at: Date.now() + (json.expires_in - 30) * 1000
+    }));
+  }
+
+  function tokenRequest(config, body) {
+    return fetch(config.cognitoDomain + '/oauth2/token', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams(body)
+    }).then(function (r) {
+      if (!r.ok) throw new Error('token endpoint returned ' + r.status);
+      return r.json();
+    });
+  }
+
+  function startLogin(config) {
+    var verifier = randomString(64);
+    var state = randomString(16);
+    sessionStorage.setItem(VERIFIER_KEY, verifier);
+    sessionStorage.setItem(STATE_KEY, state);
+    return challenge(verifier).then(function (codeChallenge) {
+      var params = new URLSearchParams({
+        response_type: 'code',
+        client_id: config.clientId,
+        redirect_uri: config.redirectUri,
+        scope: config.scopes,
+        state: state,
+        code_challenge: codeChallenge,
+        code_challenge_method: 'S256'
+      });
+      window.location.assign(config.cognitoDomain + '/oauth2/authorize?' + params.toString());
+      return null;
+    });
+  }
+
+  function exchangeCode(config, code) {
+    var verifier = sessionStorage.getItem(VERIFIER_KEY);
+    if (!verifier) return Promise.reject(new Error('PKCE verifier is missing'));
+    return tokenRequest(config, {
+      grant_type: 'authorization_code',
+      client_id: config.clientId,
+      code: code,
+      redirect_uri: config.redirectUri,
+      code_verifier: verifier
+    }).then(function (json) {
+      saveTokenResponse(json);
+      sessionStorage.removeItem(VERIFIER_KEY);
+      sessionStorage.removeItem(STATE_KEY);
+      try { window.history.replaceState(null, '', window.location.pathname); } catch (_) { /* 非致命 */ }
+      return loadTokens().access_token;
+    });
+  }
+
+  function refresh(config, refreshToken) {
+    return tokenRequest(config, {
+      grant_type: 'refresh_token',
+      client_id: config.clientId,
+      refresh_token: refreshToken
+    }).then(function (json) {
+      saveTokenResponse(json);
+      return loadTokens().access_token;
+    }).catch(function () {
+      clearTokens();
+      return null;
+    });
+  }
+
+  function ensureAuthenticated(config) {
+    var url = new URL(window.location.href);
+    if (url.searchParams.get('error')) {
+      try { window.history.replaceState(null, '', window.location.pathname); } catch (_) { /* 非致命 */ }
+      return Promise.reject(new Error('Cognito login was cancelled or failed'));
+    }
+    var code = url.searchParams.get('code');
+    if (code) {
+      var expected = sessionStorage.getItem(STATE_KEY);
+      if (!expected || expected !== url.searchParams.get('state')) {
+        return Promise.reject(new Error('OAuth state mismatch'));
+      }
+      return exchangeCode(config, code);
+    }
+
+    var tokens = loadTokens();
+    if (tokens && tokens.access_token && tokens.expires_at > Date.now()) {
+      return Promise.resolve(tokens.access_token);
+    }
+    if (tokens && tokens.refresh_token) {
+      return refresh(config, tokens.refresh_token).then(function (token) {
+        return token || startLogin(config);
+      });
+    }
+    return startLogin(config);
+  }
+
+  $('logout').addEventListener('click', function () {
+    clearTokens();
+    sessionStorage.removeItem(VERIFIER_KEY);
+    sessionStorage.removeItem(STATE_KEY);
+    if (!AUTH_CONFIG) return window.location.assign('/');
+    var params = new URLSearchParams({
+      client_id: AUTH_CONFIG.clientId,
+      logout_uri: AUTH_CONFIG.logoutUri
+    });
+    window.location.assign(AUTH_CONFIG.cognitoDomain + '/logout?' + params.toString());
+  });
 
   var day = function (a, b) {
     return Math.round((Date.parse(b + 'T00:00:00+09:00') - Date.parse(a + 'T00:00:00+09:00')) / 864e5);
@@ -260,13 +551,42 @@
     return iso.slice(0, 4) + '年' + Number(iso.slice(5, 7)) + '月' + Number(iso.slice(8, 10)) + '日（' + w + '）';
   };
 
-  fetch('data.json', { cache: 'no-cache' })
-    .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-    .then(init)
+  fetch('/paper/auth-config.json', { cache: 'no-store' })
+    .then(function (r) { if (!r.ok) throw new Error('認証設定 HTTP ' + r.status); return r.json(); })
+    .then(function (config) {
+      AUTH_CONFIG = config;
+      return ensureAuthenticated(config).then(function (token) {
+        if (!token) return null; // Hosted UI へ遷移中
+        $('logout').hidden = false;
+        var headers = {};
+        headers[config.tokenHeader || 'x-morning-token'] = token;
+        return fetch('/paper/data.json', { cache: 'no-store', headers: headers }).then(function (r) {
+          if (r.status === 401) {
+            clearTokens();
+            return startLogin(config);
+          }
+          if (!r.ok) throw new Error('紙面データ HTTP ' + r.status);
+          return r.json();
+        });
+      });
+    })
+    .then(function (data) { if (data) init(data); })
     .catch(function (e) {
       $('date').textContent = '';
       $('err').hidden = false;
-      $('err').textContent = '紙面データを読み込めませんでした（' + e.message + '）。まだ生成されていない可能性があります。';
+      $('err').textContent = '認証または紙面データの読み込みに失敗しました（' + e.message + '）。';
+      // 認可コードは一度しか使えないため、失敗時はURLから落として再ログインできるようにする。
+      try { window.history.replaceState(null, '', window.location.pathname); } catch (_) { /* 非致命 */ }
+      var retry = document.createElement('button');
+      retry.type = 'button';
+      retry.className = 'retry';
+      retry.textContent = 'ログインをやり直す';
+      retry.addEventListener('click', function () {
+        clearTokens();
+        if (AUTH_CONFIG) startLogin(AUTH_CONFIG);
+        else window.location.reload();
+      });
+      $('err').appendChild(retry);
     });
 
   function init(d) {
@@ -280,18 +600,36 @@
     $('range').textContent = md(d.firstDate) + ' ─ ' + md(d.lastDate);
 
     renderFlow(); renderToday(); renderArchive(); renderTerrain();
+    var saved = null;
+    try { saved = JSON.parse(sessionStorage.getItem(VIEW_KEY) || 'null'); } catch (_) { /* 非致命 */ }
+    var initial = saved && PANES[saved.pane]
+      ? saved.pane
+      : (window.matchMedia('(max-width: 640px)').matches ? 'today' : 'flow');
+    show(initial);
+    if (saved && typeof saved.scrollY === 'number') {
+      requestAnimationFrame(function () { window.scrollTo(0, saved.scrollY); });
+    }
   }
 
   // ── タブ
   var PANES = { flow: 'p-flow', today: 'p-today', archive: 'p-archive', terrain: 'p-terrain', search: 'p-search' };
+  var activePane = 'flow';
   function show(name) {
+    activePane = name;
     Object.keys(PANES).forEach(function (k) { $(PANES[k]).hidden = k !== name; });
     Array.prototype.forEach.call(document.querySelectorAll('.tabs button'), function (b) {
       b.setAttribute('aria-selected', String(b.dataset.tab === name));
     });
   }
   Array.prototype.forEach.call(document.querySelectorAll('.tabs button'), function (b) {
-    b.addEventListener('click', function () { $('q').value = ''; show(b.dataset.tab); });
+    b.addEventListener('click', function () {
+      if (b.dataset.tab !== 'search') { $('q').value = ''; $('q-mobile').value = ''; }
+      show(b.dataset.tab);
+      if (b.dataset.tab === 'search') setTimeout(function () { $('q-mobile').focus(); }, 0);
+    });
+  });
+  window.addEventListener('pagehide', function () {
+    try { sessionStorage.setItem(VIEW_KEY, JSON.stringify({ pane: activePane, scrollY: window.scrollY })); } catch (_) { /* 非致命 */ }
   });
 
   // ── 流れ
@@ -311,11 +649,18 @@
     D.stories.forEach(function (s) {
       if (day(s.lastSeen, last) === 8) moved.push({ k: '終了', c: 'b-end', s: s, n: s.lastSeen + ' を最後に1週間動きなし　通算' + s.count + '件' });
     });
+    moved.sort(function (a, b) {
+      var rank = { '新規': 0, '続報': 1, '終了': 2 };
+      if (rank[a.k] !== rank[b.k]) return rank[a.k] - rank[b.k];
+      return storyScore(b.s) - storyScore(a.s);
+    });
     $('moved-n').textContent = moved.length ? moved.length + '件' : '';
     $('moved').innerHTML = moved.length
       ? moved.map(function (m) {
-          return '<li><span class="badge ' + m.c + '">' + m.k + '</span>' +
-            '<b data-story="' + esc(m.s.id) + '">' + esc(m.s.title) + '</b>' +
+          return '<li data-story="' + esc(m.s.id) + '" role="button" tabindex="0">' +
+            (storyHasUnread(m.s) ? '<span class="unread-dot" aria-label="未読あり"></span>' : '') +
+            '<span class="badge ' + m.c + '">' + m.k + '</span>' +
+            '<b>' + esc(m.s.title) + '</b>' +
             '<span class="note">' + esc(m.n) + '</span></li>';
         }).join('')
       : '<li class="muted">きょうは動きがありませんでした。</li>';
@@ -331,7 +676,7 @@
       var ticks = s.dates.map(function (dt) {
         return '<span class="tick' + (s.live ? ' live' : '') + '" style="left:calc(' + pct(dt).toFixed(1) + '% - 3px)"></span>';
       }).join('');
-      return '<tr data-story="' + esc(s.id) + '">' +
+      return '<tr data-story="' + esc(s.id) + '" role="button" tabindex="0">' +
         '<td class="t">' + esc(s.title) +
           '<em>' + md(s.firstSeen) + '〜' + md(s.lastSeen) + '　' + s.spanDays + '日' +
           (s.isLongRunning ? '<span class="long">長期</span>' : '') + '</em></td>' +
@@ -340,6 +685,13 @@
           '" style="left:' + left.toFixed(1) + '%;width:' + w.toFixed(1) + '%"></div>' + ticks + '</div></td>' +
         '<td class="n">' + s.count + '</td></tr>';
     }).join('');
+  }
+
+  function storyScore(s) {
+    return s.articleIds.reduce(function (max, id) { return ART[id] ? Math.max(max, ART[id].score) : max; }, 0);
+  }
+  function storyHasUnread(s) {
+    return s.articleIds.some(function (id) { return ART[id] && !isRead(id); });
   }
 
   /** 話題を一面に出す */
@@ -354,22 +706,38 @@
     var items = s.articleIds.map(function (id) { return ART[id]; })
       .filter(Boolean)
       .sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+    var visible = items.length <= 5 ? items : [items[0]].concat(items.slice(-4));
+    var older = items.length <= 5 ? [] : items.slice(1, -4);
     $('lead-tl').innerHTML = items.length
-      ? items.map(function (a, i) {
-          var dim = i < items.length - 6 ? ' class="dim"' : '';
-          return '<li' + dim + '><span class="d">' + a.date +
-            (a.sourceName ? '　' + esc(a.sourceName) : '') + '</span>' +
-            '<a href="' + esc(a.url) + '" target="_blank" rel="noopener">' + esc(a.title) + '</a>' +
-            '<span class="sm">' + esc(a.summary) + '</span></li>';
-        }).join('')
+      ? visible.map(timelineItem).join('') + (older.length
+        ? '<li class="timeline-more"><details><summary>途中の経過 ' + older.length + '件を表示</summary><ul class="tl">' + older.map(timelineItem).join('') + '</ul></details></li>'
+        : '')
       : '<li class="muted">記事が見つかりませんでした。</li>';
     Array.prototype.forEach.call($('gantt').querySelectorAll('tr'), function (tr) {
       tr.setAttribute('aria-selected', String(tr.dataset.story === s.id));
     });
   }
 
+  function timelineItem(a) {
+    return '<li data-article="' + esc(a.id) + '"' + (isRead(a.id) ? ' class="read"' : '') + '><span class="d">' + a.date +
+      (a.sourceName ? '　' + esc(a.sourceName) : '') + '</span>' +
+      '<a href="' + esc(a.url) + '" target="_blank" rel="noopener" data-read-id="' + esc(a.id) + '">' + esc(a.title) + '</a>' +
+      '<span class="sm">' + esc(a.summary) + '</span></li>';
+  }
+
   // 経過表・動いた話題からの選択
   document.addEventListener('click', function (e) {
+    var paneButton = e.target.closest ? e.target.closest('[data-open-pane]') : null;
+    if (paneButton) { show(paneButton.dataset.openPane); window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
+    var filter = e.target.closest ? e.target.closest('.filter-unread') : null;
+    if (filter) {
+      unreadOnly = !unreadOnly;
+      if (activePane === 'archive' && currentArchiveDate) showDay(currentArchiveDate);
+      else renderToday();
+      return;
+    }
+    var articleLink = e.target.closest ? e.target.closest('[data-read-id]') : null;
+    if (articleLink) markRead(articleLink.dataset.readId);
     var el = e.target.closest ? e.target.closest('[data-story]') : null;
     if (!el || !D) return;
     var s = D.stories.filter(function (x) { return x.id === el.dataset.story; })[0];
@@ -377,6 +745,12 @@
     show('flow');
     showStory(s, s.live ? '追っている流れ' : '止まっている流れ');
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    var el = e.target.closest ? e.target.closest('[data-story]') : null;
+    if (!el) return;
+    e.preventDefault(); el.click();
   });
 
   /** 発行元。取れていない記事には何も出さない（「不明」を並べても情報が増えない） */
@@ -399,26 +773,39 @@
   }
 
   // ── 記事リストの共通描画
-  function artList(ids) {
+  function artList(ids, expandTop) {
     var items = ids.map(function (id) { return ART[id]; }).filter(Boolean)
       .sort(function (a, b) { return b.score - a.score; });
-    if (!items.length) return '<li class="muted">記事がありません。</li>';
-    return items.map(function (a) {
-      return '<li><div class="h"><a href="' + esc(a.url) + '" target="_blank" rel="noopener">' +
-        esc(a.title) + '</a></div><div class="s">' + esc(a.summary) + '</div>' +
+    if (unreadOnly) items = items.filter(function (a) { return !isRead(a.id); });
+    if (!items.length) return '<li class="muted">' + (unreadOnly ? '未読の記事はありません。' : '記事がありません。') + '</li>';
+    return items.map(function (a, i) { return articleItem(a, Boolean(expandTop && i < 3), true); }).join('');
+  }
+
+  function articleItem(a, open, withImportance) {
+      return '<li data-article="' + esc(a.id) + '"' + (isRead(a.id) ? ' class="read"' : '') + '><div class="h">' +
+        (isRead(a.id) ? '' : '<span class="unread-dot" aria-label="未読"></span>') + esc(a.title) + '</div>' +
         '<div class="m"><span class="tp">' + esc(TOPIC[a.topic] || a.topic) + '</span>' +
-        source(a) + '重要度 ' + '●'.repeat(a.score) + '○'.repeat(Math.max(0, 5 - a.score)) +
-        '　' + published(a) + '</div></li>';
-    }).join('');
+        source(a) + (withImportance ? '重要度 ' + '●'.repeat(a.score) + '○'.repeat(Math.max(0, 5 - a.score)) + '　' : '') +
+        published(a) + '</div><details class="article-detail"' + (open ? ' open' : '') + '><summary>要約を見る</summary>' +
+        '<div class="s">' + esc(a.summary) + '</div><div class="article-actions"><a href="' + esc(a.url) +
+        '" target="_blank" rel="noopener" data-read-id="' + esc(a.id) + '">元記事を開く ↗</a></div></details></li>';
   }
 
   // ── 今日の紙面
   function renderToday() {
     var d = D.days[D.days.length - 1];
     if (!d) { $('p-today').innerHTML = '<div class="muted">まだありません。</div>'; return; }
+    var created = D.stories.filter(function (s) { return s.firstSeen === D.lastDate; }).length;
+    var continued = D.stories.filter(function (s) { return s.firstSeen !== D.lastDate && s.dates.indexOf(D.lastDate) !== -1; }).length;
+    var ended = D.stories.filter(function (s) { return day(s.lastSeen, D.lastDate) === 8; }).length;
+    var summary = '<div class="today-summary" aria-label="今日の変化">' +
+      '<button type="button" data-open-pane="flow">新しく発見<b>' + created + '件</b></button>' +
+      '<button type="button" data-open-pane="flow">続報あり<b>' + continued + '件</b></button>' +
+      '<button type="button" data-open-pane="flow">観測を終了<b>' + ended + '件</b></button></div>';
     // 記事は重要度順に並ぶ（artList がスコア降順）。「今日の注目」欄は #11 で廃止した
     $('p-today').innerHTML = '<h2 class="sec">' + jp(d.date) + ' <small>' + d.articleIds.length +
-      '件・重要度順</small></h2><ul class="arts">' + artList(d.articleIds) + '</ul>';
+      '件・重要度順</small></h2>' + summary + '<div class="list-tools"><button class="filter-unread" type="button" aria-pressed="' + unreadOnly + '">未読だけ</button></div>' +
+      '<ul class="arts">' + artList(d.articleIds, true) + '</ul>';
   }
 
   // ── アーカイブ（月 → 日 の2段。1年分でも日のボタンが31個で収まる）
@@ -468,8 +855,10 @@
   function showDay(date) {
     var d = D.days.filter(function (x) { return x.date === date; })[0];
     if (!d) return;
+    currentArchiveDate = date;
     $('archive-body').innerHTML = '<h2 class="sec">' + jp(d.date) + ' <small>' + d.articleIds.length +
-      '件</small></h2><ul class="arts">' + artList(d.articleIds) + '</ul>';
+      '件</small></h2><div class="list-tools"><button class="filter-unread" type="button" aria-pressed="' + unreadOnly + '">未読だけ</button></div>' +
+      '<ul class="arts">' + artList(d.articleIds, false) + '</ul>';
   }
 
   // ── 地形（分野 × 週）
@@ -520,13 +909,17 @@
 
   // ── 全文検索
   var timer = null;
-  $('q').addEventListener('input', function () {
-    clearTimeout(timer);
-    timer = setTimeout(runSearch, 120);
+  [$('q'), $('q-mobile')].forEach(function (input) {
+    input.addEventListener('input', function () {
+      var other = input === $('q') ? $('q-mobile') : $('q');
+      other.value = input.value;
+      clearTimeout(timer);
+      timer = setTimeout(runSearch, 120);
+    });
   });
   function runSearch() {
-    var q = $('q').value.trim();
-    if (!q) { show('flow'); return; }
+    var q = ($('q-mobile').value || $('q').value).trim();
+    if (!q) { $('search-n').textContent = ''; $('search-body').innerHTML = '<li class="muted">検索語を入力してください。</li>'; return; }
     if (!D) return;
     var lower = q.toLowerCase();
     var hits = D.articles.filter(function (a) {
@@ -534,12 +927,7 @@
     }).sort(function (a, b) { return a.date < b.date ? 1 : -1; });
     $('search-n').textContent = hits.length + '件';
     $('search-body').innerHTML = hits.length
-      ? hits.map(function (a) {
-          return '<li><div class="h"><a href="' + esc(a.url) + '" target="_blank" rel="noopener">' +
-            esc(a.title) + '</a></div><div class="s">' + esc(a.summary) + '</div>' +
-            '<div class="m"><span class="tp">' + esc(TOPIC[a.topic] || a.topic) + '</span>' +
-            source(a) + published(a) + '</div></li>';
-        }).join('')
+      ? hits.map(function (a) { return articleItem(a, false, false); }).join('')
       : '<li class="muted">見つかりませんでした。</li>';
     show('search');
   }

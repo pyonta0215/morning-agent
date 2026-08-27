@@ -31,6 +31,8 @@ const CONTENT_TYPE: Record<string, string> = {
   '.js': 'text/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.webmanifest': 'application/manifest+json; charset=utf-8',
   '.txt': 'text/plain; charset=utf-8',
   '.ico': 'image/x-icon',
 };
@@ -50,10 +52,12 @@ export function collectStaticFiles(dir: string = STATIC_DIR): SiteFile[] {
         walk(childAbs, childRel);
         continue;
       }
+      var ext = path.extname(entry.name);
+      var binary = ext === '.png' || ext === '.ico';
       out.push({
         key: childRel,
-        body: fs.readFileSync(childAbs, 'utf-8'),
-        contentType: CONTENT_TYPE[path.extname(entry.name)] ?? 'application/octet-stream',
+        body: binary ? fs.readFileSync(childAbs) : fs.readFileSync(childAbs, 'utf-8'),
+        contentType: CONTENT_TYPE[ext] ?? 'application/octet-stream',
         // HTML はデータと同じ鮮度で差し替わってほしいので同じく短くする
         cacheControl: 'public, max-age=60',
       });

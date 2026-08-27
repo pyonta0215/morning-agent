@@ -1,107 +1,148 @@
 # 閲覧サイト `news.imai.me` のデプロイ手順
 
-`MorningAgentSiteStack`（us-east-1）を立てて、パス別のBasic認証をかけるまでの手順。
+`MorningAgentSiteStack`（us-east-1）で、公開概観と Cognito 認証付き紙面を配信する。
 
 ## 構成
 
 ```
-https://news.imai.me/            概観（公開）      … 集計値・活動の推移・自分のメモ・仕組みの図
-https://news.imai.me/paper/      紙面（Basic認証） … 記事の要約・全文検索・過去号・ストーリーの中身
+https://news.imai.me/            概観（公開）        … 集計値・活動の推移・自分のメモ・仕組みの図
+https://news.imai.me/paper/      紙面（Cognito認証） … 記事の要約・全文検索・過去号・ストーリーの中身
 ```
 
-| | |
+| 要素 | 役割 |
 |---|---|
-| S3 | `morning-agent-site-<account>`（us-east-1・非公開・OAC経由でのみCloudFrontに読ませる） |
-| CloudFront | PriceClass 200／証明書はACM（us-east-1）／`X-Robots-Tag: noindex, nofollow` |
-| 認証 | CloudFront Function（JS 2.0）＋ KeyValueStore |
-| DNS | Route53 `imai.me` ゾーンに A / AAAA のエイリアス |
+| S3 | `morning-agent-site-<account>`。非公開で、CloudFront OAC 経由だけ読み取り可能 |
+| CloudFront | 公開ファイルを配信し、`/paper/data.json` を認証 Lambda へ送る |
+| Cognito User Pool | Hosted UI、1名を管理者作成、自己サインアップ無効、OAuth Authorization Code + PKCE |
+| Paper API Lambda | `aws-jwt-verify` でアクセストークンを検証し、S3 の紙面データだけ返す |
+| Route53 / ACM | `news.imai.me` の A / AAAA と TLS 証明書 |
 
-**認証は「既定で必須、公開パスだけ明示除外」**（`infra/functions/site-auth.js`）。
-逆向き（`/paper/` だけ認証）にすると、あとから `/admin/` や `/data/` を足したときに素通りする。
+紙面 HTML はログインを開始するための静的な殻で、記事・要約は含まない。機密データは
+`paper/data.json` に分離し、次の2段で閉じる。
 
-公開パスの判定はセキュリティ境界なのでテストがある:
+1. CloudFront Function がトークンのない要求を Lambda 手前で 401 にする
+2. Lambda が JWT の署名、期限、token_use、User Pool、App Client を検証する
 
-```bash
-npm run test:site-auth
-```
+Lambda Function URL は `AWS_IAM` にし、CloudFront OAC からの
+`lambda:InvokeFunctionUrl` / `lambda:InvokeFunction` だけを許可する。直URLは 403 になる。
+CloudFront の SigV4 が `Authorization` を使うため、Cognito トークンは
+`X-Morning-Token` で渡す。
+
+S3 の既定 behavior は `infra/functions/site-path-guard.js` の許可リスト方式を維持する。
+紙面の殻を除く未知のパスは 404 になり、将来 `/admin/` などを足しても自動公開されない。
 
 ## 前提
 
 - Route53 に `imai.me` のホストゾーンがある（`Z07967483MFT3YWEGWUGM`）
-- CDK が us-east-1 でブートストラップ済み（未実施なら `npx cdk bootstrap aws://<account>/us-east-1`）
-- 認証情報は `~/.aws` の既定プロファイル。**`.env` の SES 用キーでは権限が足りない**
+- CDK が us-east-1 でブートストラップ済み
+- `~/.aws` の既定プロファイルに CloudFormation / Cognito / Lambda / CloudFront / IAM / S3 の更新権限がある
+- Cognito に作る本人用メールアドレスが決まっている
 
 ## 手順
 
-### 1. デプロイ
+### 1. ローカル検証
 
 ```bash
-cd infra && npx cdk deploy MorningAgentSiteStack
+npm ci
+npm test
+npm run build
+cd infra
+npx tsc --noEmit -p tsconfig.json
+npx cdk synth MorningAgentSiteStack --quiet
 ```
 
-ACM の証明書は Route53 に検証用CNAMEを自動で入れて発行される。数分かかる。
-完了すると出力に `SiteUrl` / `PaperUrl` / `SiteBucketName` / `DistributionId` / `KvsArn` が出る。
+### 2. デプロイ
 
-### 2. Basic認証の資格情報を入れる
-
-**リポジトリにもCDKにも置かない。** CLIで KeyValueStore に直接入れる。
+ルートから全スタックを更新する。
 
 ```bash
-KVS_ARN=<出力の KvsArn>
-ETAG=$(aws cloudfront-keyvaluestore describe-key-value-store --kvs-arn "$KVS_ARN" --query ETag --output text)
-aws cloudfront-keyvaluestore put-key --kvs-arn "$KVS_ARN" --if-match "$ETAG" \
-  --key authorization --value "Basic $(printf '%s' 'ユーザ名:パスワード' | base64)"
+npm run deploy
 ```
 
-鍵を入れるまで、認証が要るパスは **401 ではなく 503** を返す。
-未登録のまま素通りさせるほうが危険なので、開くのではなく閉じる作りにしてある。
+完了すると Site Stack に次が出る。
 
-### 3. 確認
+- `CognitoUserPoolId`
+- `CognitoUserPoolClientId`
+- `CognitoHostedUiDomain`
+- `PaperApiFunctionUrl`
+- `PaperUrl`
+
+Basic 認証用 KeyValueStore とその資格情報は不要になり、スタック更新時に削除される。
+User Pool は削除保護と `RETAIN` を設定しているため、通常のスタック削除では消えない。
+
+### 3. 本人ユーザーを1名作成
+
+自己サインアップは無効。`CognitoUserPoolId` と本人のメールを使う。
 
 ```bash
-curl -sI https://news.imai.me/            # 200（認証なしで見える）
-curl -sI https://news.imai.me/paper/      # 401
-curl -sI -u 'ユーザ名:パスワード' https://news.imai.me/paper/   # 200
-curl -sI https://news.imai.me/stories/index.json   # 401（whitelistに無いものは閉じる）
+aws cognito-idp admin-create-user --region us-east-1 \
+  --user-pool-id <CognitoUserPoolId> \
+  --username <本人メール> \
+  --user-attributes Name=email,Value=<本人メール> Name=email_verified,Value=true \
+  --desired-delivery-mediums EMAIL
 ```
 
-## Lambda 側の権限
+一時パスワードは Cognito から本人メールへ送られる。初回ログイン時に本人が恒久パスワードへ変更するため、
+管理者のコマンド履歴やこのリポジトリにパスワードを残さない。
 
-サイトへの書き込みは ap-northeast-1 の Lambda から行う。
-CDKのクロスリージョン参照（裏でSSMのスタックが増える）を避けるため、
-**バケット名とロール名を `infra/bin/app.ts` の literal で固定**し、両側から同じ名前を参照している。
+TOTP MFA は任意で有効化できる。SMS MFA は構成していないため、SMS 料金は発生しない。
 
+### 4. 新しい紙面 HTML を反映
+
+静的ファイルは `publish` フェーズが一元管理する。次の定期 publish を待つか、デプロイ直後に
+`MorningAgentLambdaStack.MorningAgentFunctionName` を使って publish だけ実行する。LLM とメール送信は呼ばない。
+
+```bash
+aws lambda invoke --region ap-northeast-1 \
+  --function-name <MorningAgentFunctionName> \
+  --cli-binary-format raw-in-base64-out \
+  --payload '{"phase":"publish"}' \
+  /tmp/morning-agent-publish-result.json
 ```
-SITE_BUCKET_NAME = morning-agent-site-<account>
-LAMBDA_ROLE_NAME = morning-agent-lambda
+
+### 5. デプロイ後の確認
+
+```bash
+curl -sI https://news.imai.me/                         # 200
+curl -sI https://news.imai.me/paper/                   # 200（ログイン開始用HTMLのみ）
+curl -sI https://news.imai.me/paper/data.json          # 401、データ本文なし
+curl -sI https://news.imai.me/stories/index.json       # 404、未知パスは閉じる
+curl -sI https://<PaperApiFunctionUrlのホスト>/paper/data.json  # 403、直URL拒否
 ```
 
-片方だけ変えると権限が切れる。変えるときは必ず両方。
+ブラウザのシークレットウィンドウでも確認する。
 
-## キャッシュ無効化はしない
+1. `https://news.imai.me/paper/` が Cognito Hosted UI へ移動する
+2. 作成したユーザーでログインすると紙面が表示される
+3. 「ログアウト」で公開トップへ戻る
+4. ログアウト後に `/paper/` を開くと再び Hosted UI へ移動する
 
-サイトの更新は1日1回なので、オリジン側の `Cache-Control` を短くしておけば足りる。
-`CreateInvalidation` は月1,000件を超えると課金対象になるうえ、権限とクロススタック参照を
-1つずつ増やすので採らなかった。publish フェーズは `Cache-Control: public, max-age=60` を付けて書く。
+## コスト判断
 
-## 既存スタックへの影響（`MorningAgentLambdaStack`）
+個人1名・通常閲覧なら、今回増える認証コストは実質 `$0/月` の想定。
 
-同時に次を変更している。どちらもバケットの置き換えは起きない（論理IDもバケット名も変えていない）。
-
-- `removalPolicy` を `DESTROY` → **`RETAIN`**、`autoDeleteObjects` を撤去。
-  `stories/`（台帳）と `notes/`（メモ）は失うと復元できないので、`cdk destroy` で消えないようにする
-- **バージョニングを有効化**。誤った上書きから戻せるようにする。
-  旧版は90日で消す（全データが2MB程度なので保存料はほぼ生じない）
-- Lambda実行ロールを**固定名 `morning-agent-lambda`** の明示ロールに変更。
-  CloudFormation が新ロールを作って関数を差し替え、旧ロールを消す
-
-## コスト
-
-| | 月額 | 根拠 |
+| 要素 | このサイトでの利用 | 判断 |
 |---|---|---|
-| S3（サイト） | 実質 $0 | 数MB |
-| CloudFront | $0 | 常時無料枠（1TB転送／1,000万リクエスト／200万Function呼び出し）内 |
-| KeyValueStore | $0 | Functions の無料枠に含まれる |
-| ACM / Route53 | $0 | 証明書は無料、ゾーンは既存でサブドメイン追加は無料 |
+| Cognito Lite | 1 MAU | 直接サインインは月10,000 MAUまで無料。期限なしの無料枠内 |
+| Paper API Lambda | 紙面を開くごとに1回、256MB・短時間 | 月100万リクエスト / 400,000 GB秒の無料枠内 |
+| CloudFront Function | 匿名要求の一次拒否 | 既存 CloudFront の小規模利用内 |
+| S3 GET | 紙面を開くごとに1回 | 数MB規模・個人利用では無視できる水準 |
 
-**無料枠はアカウント単位**（job-posting-lifespan と合算）なので、デプロイ後1ヶ月は Cost Explorer で実額を確認する。
+公式料金: [Cognito](https://aws.amazon.com/cognito/pricing/) / [Lambda](https://aws.amazon.com/lambda/pricing/) /
+[CloudFront](https://aws.amazon.com/cloudfront/pricing/)
+
+ただし AWS にハードな支出上限はない。無料枠はアカウントまたは Organization 単位で他プロジェクトと
+合算されるため、デプロイ後1か月は Cost Explorer で `Cognito` / `Lambda` / `CloudFront` の実額を確認する。
+認証設定 JSON は5分キャッシュし、匿名の紙面データ要求はエッジで落とすため、通常アクセスで不要な
+Lambda 呼び出しが増えないようにしている。
+
+## キャッシュとデータ更新
+
+- 公開 HTML / JSON は `Cache-Control: public, max-age=60`
+- 認証設定は `max-age=300`
+- 紙面データは `private, no-store` かつ CloudFront キャッシュ無効
+- `CreateInvalidation` は通常使わない。日次 publish と短い TTL で更新する
+
+サイトへの書き込み Lambda は ap-northeast-1、サイトバケットと認証 Lambda は us-east-1。
+クロスリージョン参照を増やさないため、サイトバケット名と書き込みロール名は
+`infra/bin/app.ts` の固定規則で両スタックから同じ値を参照する。

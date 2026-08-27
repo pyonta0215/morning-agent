@@ -29,9 +29,11 @@ new MorningAgentSchedulerStack(app, 'MorningAgentSchedulerStack', {
 // CloudFront の証明書は us-east-1 にしか置けないため、スタックごと us-east-1 に置く
 new MorningAgentSiteStack(app, 'MorningAgentSiteStack', {
   env: { account, region: 'us-east-1' },
-  description: 'morning-agent 閲覧サイト（概観＝公開 / 紙面＝Basic認証）',
+  description: 'morning-agent 閲覧サイト（概観＝公開 / 紙面＝Cognito認証）',
   domainName: 'news.imai.me',
   zoneName: 'imai.me',
   hostedZoneId: 'Z07967483MFT3YWEGWUGM',
   siteBucketName: SITE_BUCKET_NAME,
+  // Cognito の prefix domain はグローバル一意。アカウントIDを含めて衝突を避ける。
+  cognitoDomainPrefix: `morning-agent-${account}`,
 });

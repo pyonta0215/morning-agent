@@ -2,6 +2,10 @@ import * as cdk from 'aws-cdk-lib';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
+import * as cognito from 'aws-cdk-lib/aws-cognito';
+import * as iam from 'aws-cdk-lib/aws-iam';
+import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as targets from 'aws-cdk-lib/aws-route53-targets';
 import * as s3 from 'aws-cdk-lib/aws-s3';
@@ -19,17 +23,19 @@ export interface SiteStackProps extends cdk.StackProps {
   readonly hostedZoneId: string;
   /** バケット名。lambdaStack 側が同じ名前を literal で参照するため固定する */
   readonly siteBucketName: string;
+  /** Cognito が払い出す Hosted UI ドメインの一意なプレフィックス */
+  readonly cognitoDomainPrefix: string;
 }
 
 /**
  * 閲覧サイト `news.imai.me`。**1つのディストリビューションで2つの面を出す。**
  *
  *   /            概観（公開）        … 集計値・活動の推移・自分のメモ・仕組みの図だけ
- *   /paper/      紙面（Basic認証）   … 記事の要約・全文検索・過去号・ストーリーの中身
+ *   /paper/      紙面（Cognito認証） … 記事の要約・全文検索・過去号・ストーリーの中身
  *
- * 認証は CloudFront Function で行い、**既定は認証必須・公開パスのみ明示除外**にしてある
- * （functions/site-auth.js）。資格情報は KeyValueStore に置き、関数コードにも
- * リポジトリにも残さない。
+ * 紙面 HTML は OAuth を開始するための殻として公開し、中身の paper/data.json は
+ * CloudFront OAC で閉じた Lambda が Cognito JWT を検証して返す。S3 の既定 behavior は
+ * CloudFront Function の許可リストを通し、未知のパスは引き続き fail closed にする。
  *
  * CloudFront の証明書は us-east-1 にしか置けないため、このスタックごと us-east-1 に置く。
  * 書き込む Lambda は ap-northeast-1 にあるので、スタックを跨いだ参照を作らずに済むよう
@@ -53,19 +59,94 @@ export class MorningAgentSiteStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
-    // 中身は空で作る。資格情報は AWS CLI で入れる（リポジトリにも CDK にも置かない）
-    const store = new cloudfront.KeyValueStore(this, 'AuthStore', {
-      comment: 'Basic 認証の資格情報。key=authorization, value="Basic <base64>"',
+    const callbackUrl = `https://${props.domainName}/paper/`;
+    const logoutUrl = `https://${props.domainName}/`;
+
+    // 自分用のためサインアップは閉じ、ユーザーは admin-create-user でだけ作る。
+    // Lite でも本構成に必要な Hosted UI / OAuth / TOTP MFA を満たし、課金面も明示できる。
+    const userPool = new cognito.UserPool(this, 'PaperUserPool', {
+      userPoolName: 'morning-agent-paper',
+      featurePlan: cognito.FeaturePlan.LITE,
+      selfSignUpEnabled: false,
+      signInAliases: { email: true },
+      signInCaseSensitive: false,
+      autoVerify: { email: true },
+      accountRecovery: cognito.AccountRecovery.EMAIL_ONLY,
+      passwordPolicy: {
+        minLength: 12,
+        requireLowercase: true,
+        requireUppercase: true,
+        requireDigits: true,
+        requireSymbols: true,
+      },
+      // SMS の送信費を発生させず、必要なら認証アプリの TOTP を有効化できる。
+      mfa: cognito.Mfa.OPTIONAL,
+      mfaSecondFactor: { sms: false, otp: true },
+      deletionProtection: true,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
-    const authFn = new cloudfront.Function(this, 'SiteAuthFn', {
-      code: cloudfront.FunctionCode.fromFile({
-        filePath: path.join(__dirname, '..', 'functions', 'site-auth.js'),
-      }),
-      runtime: cloudfront.FunctionRuntime.JS_2_0, // KeyValueStore は 2.0 必須
-      keyValueStore: store,
-      comment: 'news.imai.me のパス別Basic認証（既定は認証必須・公開パスのみ除外）',
+    const userPoolClient = userPool.addClient('PaperWebClient', {
+      userPoolClientName: 'morning-agent-paper-web',
+      generateSecret: false,
+      preventUserExistenceErrors: true,
+      enableTokenRevocation: true,
+      accessTokenValidity: cdk.Duration.hours(1),
+      idTokenValidity: cdk.Duration.hours(1),
+      refreshTokenValidity: cdk.Duration.days(30),
+      supportedIdentityProviders: [cognito.UserPoolClientIdentityProvider.COGNITO],
+      oAuth: {
+        flows: { authorizationCodeGrant: true },
+        scopes: [cognito.OAuthScope.OPENID],
+        callbackUrls: [callbackUrl],
+        logoutUrls: [logoutUrl],
+      },
     });
+
+    const userPoolDomain = userPool.addDomain('PaperHostedUiDomain', {
+      cognitoDomain: { domainPrefix: props.cognitoDomainPrefix },
+      // 他プロジェクトで運用実績のある Cognito 提供 UI。独自ログイン画面を保守しない。
+      managedLoginVersion: cognito.ManagedLoginVersion.CLASSIC_HOSTED_UI,
+    });
+
+    const pathGuard = new cloudfront.Function(this, 'SitePathGuard', {
+      code: cloudfront.FunctionCode.fromFile({
+        filePath: path.join(__dirname, '..', 'functions', 'site-path-guard.js'),
+      }),
+      runtime: cloudfront.FunctionRuntime.JS_2_0,
+      comment: 'news.imai.me の S3 公開パス許可リスト（未知のパスは閉じる）',
+    });
+
+    const tokenPresenceGuard = new cloudfront.Function(this, 'PaperTokenPresenceGuard', {
+      code: cloudfront.FunctionCode.fromFile({
+        filePath: path.join(__dirname, '..', 'functions', 'paper-token-presence.js'),
+      }),
+      runtime: cloudfront.FunctionRuntime.JS_2_0,
+      comment: '匿名の紙面データ要求を Lambda 手前で拒否する一次フィルタ',
+    });
+
+    const paperApi = new nodejs.NodejsFunction(this, 'PaperApiFunction', {
+      entry: path.join(__dirname, '..', 'functions', 'paper-api.ts'),
+      handler: 'handler',
+      runtime: lambda.Runtime.NODEJS_22_X,
+      architecture: lambda.Architecture.ARM_64,
+      timeout: cdk.Duration.seconds(10),
+      memorySize: 256,
+      bundling: { minify: true, sourceMap: true },
+      environment: {
+        SITE_BUCKET: bucket.bucketName,
+        COGNITO_USER_POOL_ID: userPool.userPoolId,
+        COGNITO_CLIENT_ID: userPoolClient.userPoolClientId,
+        COGNITO_DOMAIN: userPoolDomain.baseUrl(),
+        REDIRECT_URI: callbackUrl,
+        LOGOUT_URI: logoutUrl,
+      },
+    });
+    bucket.grantRead(paperApi, 'paper/data.json');
+
+    // 直URLは IAM で拒否し、CloudFront OAC が署名したリクエストだけを通す。
+    const paperApiUrl = paperApi.addFunctionUrl({ authType: lambda.FunctionUrlAuthType.AWS_IAM });
+    const paperApiOrigin = origins.FunctionUrlOrigin.withOriginAccessControl(paperApiUrl);
 
     const zone = route53.HostedZone.fromHostedZoneAttributes(this, 'Zone', {
       hostedZoneId: props.hostedZoneId,
@@ -100,8 +181,19 @@ export class MorningAgentSiteStack extends cdk.Stack {
       },
     });
 
+    const paperTokenOriginRequestPolicy = new cloudfront.OriginRequestPolicy(
+      this,
+      'PaperTokenOriginRequestPolicy',
+      {
+        comment: '紙面 API へ Cognito トークンだけを転送する',
+        headerBehavior: cloudfront.OriginRequestHeaderBehavior.allowList('x-morning-token'),
+        cookieBehavior: cloudfront.OriginRequestCookieBehavior.none(),
+        queryStringBehavior: cloudfront.OriginRequestQueryStringBehavior.none(),
+      }
+    );
+
     const distribution = new cloudfront.Distribution(this, 'Distribution', {
-      comment: 'morning-agent 閲覧サイト（概観＝公開 / 紙面＝Basic認証）',
+      comment: 'morning-agent 閲覧サイト（概観＝公開 / 紙面＝Cognito認証）',
       defaultRootObject: 'index.html',
       domainNames: [props.domainName],
       certificate,
@@ -111,17 +203,54 @@ export class MorningAgentSiteStack extends cdk.Stack {
         origin: origins.S3BucketOrigin.withOriginAccessControl(bucket),
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         responseHeadersPolicy: responseHeaders,
-        // 401 を配りたくないので、認証がかかる面はキャッシュせず毎回関数を通す
+        // 公開層は短い Cache-Control と CloudFront の通常キャッシュを使う
         cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
         functionAssociations: [
-          { function: authFn, eventType: cloudfront.FunctionEventType.VIEWER_REQUEST },
+          { function: pathGuard, eventType: cloudfront.FunctionEventType.VIEWER_REQUEST },
         ],
+      },
+      additionalBehaviors: {
+        // OAuth の公開設定。短時間キャッシュし、通常の閲覧で Lambda を毎回呼ばない。
+        '/paper/auth-config.json': {
+          origin: paperApiOrigin,
+          viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+          allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
+          cachedMethods: cloudfront.CachedMethods.CACHE_GET_HEAD,
+          cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
+          responseHeadersPolicy: responseHeaders,
+          compress: true,
+        },
+        // 機密データ。一次フィルタで匿名要求を落とし、Lambda で JWT を完全検証する。
+        '/paper/data.json': {
+          origin: paperApiOrigin,
+          viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+          allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
+          cachedMethods: cloudfront.CachedMethods.CACHE_GET_HEAD,
+          cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
+          originRequestPolicy: paperTokenOriginRequestPolicy,
+          responseHeadersPolicy: responseHeaders,
+          compress: true,
+          functionAssociations: [
+            {
+              function: tokenPresenceGuard,
+              eventType: cloudfront.FunctionEventType.VIEWER_REQUEST,
+            },
+          ],
+        },
       },
       errorResponses: [
         // S3 は存在しないキーに 403 を返す（ListBucket を与えていないため）
         { httpStatus: 403, responseHttpStatus: 404, responsePagePath: '/404.html', ttl: cdk.Duration.minutes(5) },
         { httpStatus: 404, responseHttpStatus: 404, responsePagePath: '/404.html', ttl: cdk.Duration.minutes(5) },
       ],
+    });
+
+    // Lambda Function URL + OAC は InvokeFunctionUrl と InvokeFunction の両方が必要。
+    // CDK の FunctionUrlOrigin が前者を追加するので、後者を明示する。
+    paperApi.addPermission('InvokeFunctionFromCloudFront', {
+      principal: new iam.ServicePrincipal('cloudfront.amazonaws.com'),
+      action: 'lambda:InvokeFunction',
+      sourceArn: distribution.distributionArn,
     });
 
     // 書き込みは ap-northeast-1 の Lambda から。**バケットポリシーは書かない。**
@@ -145,6 +274,9 @@ export class MorningAgentSiteStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'PaperUrl', { value: `https://${props.domainName}/paper/` });
     new cdk.CfnOutput(this, 'SiteBucketName', { value: bucket.bucketName });
     new cdk.CfnOutput(this, 'DistributionId', { value: distribution.distributionId });
-    new cdk.CfnOutput(this, 'KvsArn', { value: store.keyValueStoreArn });
+    new cdk.CfnOutput(this, 'CognitoUserPoolId', { value: userPool.userPoolId });
+    new cdk.CfnOutput(this, 'CognitoUserPoolClientId', { value: userPoolClient.userPoolClientId });
+    new cdk.CfnOutput(this, 'CognitoHostedUiDomain', { value: userPoolDomain.baseUrl() });
+    new cdk.CfnOutput(this, 'PaperApiFunctionUrl', { value: paperApiUrl.url });
   }
 }

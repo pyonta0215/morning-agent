@@ -1,0 +1,24 @@
+{
+  "name": "朝刊エージェント便",
+  "short_name": "朝刊便",
+  "description": "毎朝集めた記事と、続いている話題の流れを読む紙面",
+  "start_url": "/paper/",
+  "scope": "/paper/",
+  "display": "standalone",
+  "background_color": "#fbfaf6",
+  "theme_color": "#fbfaf6",
+  "icons": [
+    {
+      "src": "/paper/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/paper/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

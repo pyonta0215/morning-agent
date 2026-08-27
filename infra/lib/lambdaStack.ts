@@ -130,5 +130,9 @@ export class MorningAgentLambdaStack extends cdk.Stack {
         ],
       })
     );
+
+    new cdk.CfnOutput(this, 'MorningAgentFunctionName', {
+      value: this.lambdaFunction.functionName,
+    });
   }
 }
