@@ -315,7 +315,7 @@
   </div>
   <div class="colophon">
     <span id="date">読み込み中…</span>
-    <span><span id="stat"></span> <button id="logout" class="auth-action" type="button" hidden>ログアウト</button></span>
+    <span><span id="stat"></span> <a id="passkey-add" class="auth-action" href="#" hidden>Passkeyを登録</a> <button id="logout" class="auth-action" type="button" hidden>ログアウト</button></span>
   </div>
 
   <div class="tabs" role="tablist">
@@ -436,19 +436,19 @@
   }
 
   function loadTokens() {
-    var raw = localStorage.getItem(TOKEN_KEY);
+    var raw = sessionStorage.getItem(TOKEN_KEY);
     if (!raw) return null;
     try { return JSON.parse(raw); } catch (_) { return null; }
   }
 
   function clearTokens() {
-    localStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem(TOKEN_KEY);
   }
 
   function saveTokenResponse(json) {
     if (!json.access_token || !json.expires_in) throw new Error('token response is incomplete');
     var old = loadTokens();
-    localStorage.setItem(TOKEN_KEY, JSON.stringify({
+    sessionStorage.setItem(TOKEN_KEY, JSON.stringify({
       access_token: json.access_token,
       refresh_token: json.refresh_token || (old && old.refresh_token),
       // 期限直前のリクエストを避けるため30秒早めに更新する
@@ -547,6 +547,7 @@
   }
 
   $('logout').addEventListener('click', function () {
+    var tokens = loadTokens();
     clearTokens();
     sessionStorage.removeItem(VERIFIER_KEY);
     sessionStorage.removeItem(STATE_KEY);
@@ -555,7 +556,16 @@
       client_id: AUTH_CONFIG.clientId,
       logout_uri: AUTH_CONFIG.logoutUri
     });
-    window.location.assign(AUTH_CONFIG.cognitoDomain + '/logout?' + params.toString());
+    var goToLogout = function () {
+      window.location.assign(AUTH_CONFIG.cognitoDomain + '/logout?' + params.toString());
+    };
+    if (!tokens || !tokens.refresh_token) return goToLogout();
+    // revokeが失敗しても(オフライン等)ローカルログアウトは継続する。
+    fetch(AUTH_CONFIG.cognitoDomain + '/oauth2/revoke', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ token: tokens.refresh_token, client_id: AUTH_CONFIG.clientId })
+    }).catch(function () {}).then(goToLogout, goToLogout);
   });
 
   var day = function (a, b) {
@@ -574,6 +584,12 @@
       return ensureAuthenticated(config).then(function (token) {
         if (!token) return null; // Hosted UI へ遷移中
         $('logout').hidden = false;
+        var passkeyAdd = $('passkey-add');
+        passkeyAdd.href = config.cognitoDomain + '/passkeys/add?' + new URLSearchParams({
+          client_id: config.clientId,
+          redirect_uri: config.redirectUri
+        }).toString();
+        passkeyAdd.hidden = false;
         var headers = {};
         headers[config.tokenHeader || 'x-morning-token'] = token;
         return fetch('/paper/data.json', { cache: 'no-store', headers: headers }).then(function (r) {

@@ -15,6 +15,14 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// imai-auth共有Cognito(us-east-1、ImaiAuthStack)のnews用リソース。秘密では
+// ない(User Pool ID/Client ID/issuerは非機密)ためソースに置いてよい。値は
+// `aws cloudformation describe-stacks --stack-name ImaiAuthStack` の出力を
+// 2026-08-30に転記した。参照: https://github.com/pyonta0215/imai-auth
+const SHARED_AUTH_USER_POOL_ID = 'us-east-1_aqVfPpe0K';
+const SHARED_AUTH_CLIENT_ID = '7h7cm70etgomvam3gt5daarog3';
+const SHARED_AUTH_DOMAIN = 'https://auth.imai.me';
+
 export interface SiteStackProps extends cdk.StackProps {
   /** 公開ホスト名（例: news.imai.me） */
   readonly domainName: string;
@@ -62,8 +70,10 @@ export class MorningAgentSiteStack extends cdk.Stack {
     const callbackUrl = `https://${props.domainName}/paper/`;
     const logoutUrl = `https://${props.domainName}/`;
 
-    // 自分用のためサインアップは閉じ、ユーザーは admin-create-user でだけ作る。
-    // Lite でも本構成に必要な Hosted UI / OAuth / TOTP MFA を満たし、課金面も明示できる。
+    // imai-auth共有Cognitoへ移行済み。このproduct-owned User Pool/Client/Domain
+    // は、rollbackとsoak期間中の参照用にCloudFormation上は残すが、下のLambda
+    // 環境変数からはもう参照しない。削除は2製品のE2E検証・soak完了後に別Issue/
+    // 変更で行う(imai-authリポジトリのdocs/migration-guide.md参照)。
     const userPool = new cognito.UserPool(this, 'PaperUserPool', {
       userPoolName: 'morning-agent-paper',
       featurePlan: cognito.FeaturePlan.LITE,
@@ -135,9 +145,12 @@ export class MorningAgentSiteStack extends cdk.Stack {
       bundling: { minify: true, sourceMap: true },
       environment: {
         SITE_BUCKET: bucket.bucketName,
-        COGNITO_USER_POOL_ID: userPool.userPoolId,
-        COGNITO_CLIENT_ID: userPoolClient.userPoolClientId,
-        COGNITO_DOMAIN: userPoolDomain.baseUrl(),
+        // imai-auth共有Cognitoのnews Client。product-owned pool(userPool/
+        // userPoolClient/userPoolDomain、上記)のIDは渡さない(rollback用に
+        // 温存のみ)。
+        COGNITO_USER_POOL_ID: SHARED_AUTH_USER_POOL_ID,
+        COGNITO_CLIENT_ID: SHARED_AUTH_CLIENT_ID,
+        COGNITO_DOMAIN: SHARED_AUTH_DOMAIN,
         REDIRECT_URI: callbackUrl,
         LOGOUT_URI: logoutUrl,
       },
@@ -274,9 +287,23 @@ export class MorningAgentSiteStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'PaperUrl', { value: `https://${props.domainName}/paper/` });
     new cdk.CfnOutput(this, 'SiteBucketName', { value: bucket.bucketName });
     new cdk.CfnOutput(this, 'DistributionId', { value: distribution.distributionId });
-    new cdk.CfnOutput(this, 'CognitoUserPoolId', { value: userPool.userPoolId });
-    new cdk.CfnOutput(this, 'CognitoUserPoolClientId', { value: userPoolClient.userPoolClientId });
-    new cdk.CfnOutput(this, 'CognitoHostedUiDomain', { value: userPoolDomain.baseUrl() });
+    new cdk.CfnOutput(this, 'LegacyCognitoUserPoolId', {
+      value: userPool.userPoolId,
+      description: 'Product-owned pool, kept for rollback only; the running app uses the shared imai-auth pool.',
+    });
+    new cdk.CfnOutput(this, 'LegacyCognitoUserPoolClientId', {
+      value: userPoolClient.userPoolClientId,
+      description: 'Product-owned client, kept for rollback only.',
+    });
+    new cdk.CfnOutput(this, 'LegacyCognitoHostedUiDomain', { value: userPoolDomain.baseUrl() });
+    new cdk.CfnOutput(this, 'ActiveAuthUserPoolId', {
+      value: SHARED_AUTH_USER_POOL_ID,
+      description: 'Shared imai-auth user pool ID actually used by this product (see COGNITO_USER_POOL_ID).',
+    });
+    new cdk.CfnOutput(this, 'ActiveAuthClientId', {
+      value: SHARED_AUTH_CLIENT_ID,
+      description: 'Shared imai-auth news app-client ID actually used by this product.',
+    });
     new cdk.CfnOutput(this, 'PaperApiFunctionUrl', { value: paperApiUrl.url });
   }
 }

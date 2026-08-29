@@ -125,7 +125,7 @@ function makeProductionHandler(): ReturnType<typeof createPaperApiHandler> {
       clientId,
       redirectUri: required('REDIRECT_URI'),
       logoutUri: required('LOGOUT_URI'),
-      scopes: 'openid',
+      scopes: 'openid email aws.cognito.signin.user.admin',
       tokenHeader: TOKEN_HEADER,
     },
     verify: (token) => verifier.verify(token),

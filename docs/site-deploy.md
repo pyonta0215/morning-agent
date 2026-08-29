@@ -13,7 +13,7 @@ https://news.imai.me/paper/      紙面（Cognito認証） … 記事の要約�
 |---|---|
 | S3 | `morning-agent-site-<account>`。非公開で、CloudFront OAC 経由だけ読み取り可能 |
 | CloudFront | 公開ファイルを配信し、`/paper/data.json` を認証 Lambda へ送る |
-| Cognito User Pool | Hosted UI、1名を管理者作成、自己サインアップ無効、OAuth Authorization Code + PKCE |
+| Cognito | [imai-auth](https://github.com/pyonta0215/imai-auth) 共有User Pool(`auth.imai.me`)のnews App Client。Managed Login、OAuth Authorization Code + PKCE。product-owned User Pool/Client/Domainはrollback用にCloudFormation上のみ残存 |
 | Paper API Lambda | `aws-jwt-verify` でアクセストークンを検証し、S3 の紙面データだけ返す |
 | Route53 / ACM | `news.imai.me` の A / AAAA と TLS 証明書 |
 
@@ -61,22 +61,23 @@ npm run deploy
 
 完了すると Site Stack に次が出る。
 
-- `CognitoUserPoolId`
-- `CognitoUserPoolClientId`
-- `CognitoHostedUiDomain`
+- `ActiveAuthUserPoolId` / `ActiveAuthClientId`（実際に使う共有imai-auth側の値）
+- `LegacyCognitoUserPoolId` / `LegacyCognitoUserPoolClientId` / `LegacyCognitoHostedUiDomain`（rollback用、product-owned pool）
 - `PaperApiFunctionUrl`
 - `PaperUrl`
 
 Basic 認証用 KeyValueStore とその資格情報は不要になり、スタック更新時に削除される。
-User Pool は削除保護と `RETAIN` を設定しているため、通常のスタック削除では消えない。
+Product-owned User Pool は削除保護と `RETAIN` を設定しているため、通常のスタック削除では消えない。
 
-### 3. 本人ユーザーを1名作成
+### 3. ユーザー作成は不要（共有imai-authに移行済み）
 
-自己サインアップは無効。`CognitoUserPoolId` と本人のメールを使う。
+認証は [imai-auth](https://github.com/pyonta0215/imai-auth) の共有User Poolを使うため、このサイト専用のユーザー作成は不要。共有User Poolに既に作成済みの本人アカウントでログインする。
+
+以下はproduct-owned pool（rollback経路）に戻す場合のみ参考にする、旧手順。
 
 ```bash
 aws cognito-idp admin-create-user --region us-east-1 \
-  --user-pool-id <CognitoUserPoolId> \
+  --user-pool-id <LegacyCognitoUserPoolId> \
   --username <本人メール> \
   --user-attributes Name=email,Value=<本人メール> Name=email_verified,Value=true \
   --desired-delivery-mediums EMAIL
@@ -123,7 +124,7 @@ curl -sI https://<PaperApiFunctionUrlのホスト>/paper/data.json  # 403、直U
 
 | 要素 | このサイトでの利用 | 判断 |
 |---|---|---|
-| Cognito Lite | 1 MAU | 直接サインインは月10,000 MAUまで無料。期限なしの無料枠内 |
+| Cognito | imai-auth共有User Pool(Essentials)の1 MAU分 | 共有コストとしてimai-auth側で計上。直接サインインは月10,000 MAUまで無料枠内 |
 | Paper API Lambda | 紙面を開くごとに1回、256MB・短時間 | 月100万リクエスト / 400,000 GB秒の無料枠内 |
 | CloudFront Function | 匿名要求の一次拒否 | 既存 CloudFront の小規模利用内 |
 | S3 GET | 紙面を開くごとに1回 | 数MB規模・個人利用では無視できる水準 |
