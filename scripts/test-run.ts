@@ -28,7 +28,7 @@ if (agentFilter) process.env.AGENT_FILTER = agentFilter;
 if (dryRun) process.env.DRY_RUN = 'true';
 
 async function sendTestEmail() {
-  const region = process.env.AWS_REGION ?? 'ap-northeast-1';
+  const region = process.env.SES_REGION ?? 'us-east-1';
   const to = process.env.RECIPIENT_EMAIL;
   const from = process.env.SENDER_EMAIL;
 
