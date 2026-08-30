@@ -223,6 +223,25 @@
   .art-story-note { font-size: 10px; color: var(--mute); letter-spacing: .04em; }
   /* #33: 「今日」画面は要約（＝今回の更新）を開閉なしで常時見せる */
   .art-preview { margin: 6px 0 0; font-size: 12px; color: var(--sub); line-height: 1.7; }
+
+  /* ── 検索結果（#36: 話題単位のグループ＋分野・期間・状態フィルター） ── */
+  .search-filters { display: flex; flex-wrap: wrap; gap: 10px 16px; margin: 4px 0 18px; }
+  .filter-group { display: flex; flex-wrap: wrap; gap: 6px; }
+  .filter-group button {
+    min-height: 34px; padding: 5px 11px; border: 1px solid var(--line); background: #fff;
+    color: var(--sub); font: 11.5px var(--gothic); cursor: pointer;
+  }
+  .filter-group button[aria-pressed="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .search-groups { list-style: none; margin: 0; padding: 0; }
+  .search-groups .search-group { padding: 12px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
+  .sg-title { display: block; font-family: var(--mincho); font-size: 14.5px; font-weight: 700; line-height: 1.5; margin-top: 4px; }
+  .sg-meta { font-size: 10.5px; color: var(--sub); letter-spacing: .06em; margin-top: 4px; }
+  .sg-sample { font-size: 11.5px; color: var(--mute); margin-top: 4px; }
+  .search-solo-heading { font-family: var(--mincho); font-size: 11.5px; font-weight: 700; letter-spacing: .2em;
+    color: var(--sub); margin: 22px 0 10px; }
+  .search-solo-heading small { font-family: var(--gothic); font-size: 10px; letter-spacing: 0; color: var(--mute); font-weight: 400; }
+  mark { background: #f6d9c8; color: var(--ink); padding: 0 1px; }
+
   .article-detail { margin-top: 10px; }
   .article-detail > summary {
     width: max-content; min-height: 40px; margin-left: auto; padding: 7px 10px;
@@ -403,6 +422,11 @@
     .subnav-action { display: block; width: 100%; min-height: 48px; margin-top: 14px; border: 1px solid var(--line); background: #fff; color: var(--sub); font: 13px var(--gothic); }
     #p-search .search-mobile { position: sticky; top: 0; z-index: 5; padding: 10px 0; background: var(--paper); }
     #p-search input { width: 100%; min-height: 48px; padding: 10px 13px; border: 1px solid var(--ink); background: #fff; color: var(--ink); font-size: 16px; }
+    .filter-group button { min-height: 44px; }
+    .search-groups .search-group { padding: 14px 0; }
+    .sg-title { font-size: 16px; }
+    .sg-meta { font-size: 12px; }
+    .sg-sample { font-size: 13px; }
   }
 </style>
 </head>
@@ -499,7 +523,21 @@
   <section id="p-search" hidden>
     <div class="search-mobile"><input id="q-mobile" type="search" placeholder="見出し・要約を検索" autocomplete="off"></div>
     <h2 class="sec">検索結果 <small id="search-n"></small></h2>
-    <ul class="arts" id="search-body"></ul>
+    <div class="search-filters" id="search-filters" hidden>
+      <div class="filter-group" id="filter-topic" data-filter="topic"></div>
+      <div class="filter-group" data-filter="period">
+        <button type="button" data-value="" aria-pressed="true">全期間</button>
+        <button type="button" data-value="7" aria-pressed="false">直近7日</button>
+        <button type="button" data-value="30" aria-pressed="false">直近30日</button>
+      </div>
+      <div class="filter-group" data-filter="status">
+        <button type="button" data-value="" aria-pressed="true">すべての状態</button>
+        <button type="button" data-value="live" aria-pressed="false">継続中</button>
+        <button type="button" data-value="dormant" aria-pressed="false">停止</button>
+      </div>
+    </div>
+    <ul class="search-groups" id="search-groups"></ul>
+    <div id="search-solos"></div>
   </section>
 </div>
 
@@ -703,6 +741,101 @@ function buildFieldTrends(days, articles, topics, lastDate, weekCount) {
       trend: delta > 0 ? 'up' : (delta < 0 ? 'down' : 'flat')
     };
   });
+}
+
+/** HTML特殊文字のエスケープ。IIFE内の esc() と同じ実装（トップレベルの純粋関数から独立して使うため複製） */
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"]/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+  });
+}
+
+/** 検索語の一致箇所を <mark> で囲んでエスケープ済みHTMLを返す（大文字小文字は区別しない） */
+function highlightMatch(text, query) {
+  var s = String(text);
+  if (!query) return escapeHtml(s);
+  var idx = s.toLowerCase().indexOf(String(query).toLowerCase());
+  if (idx === -1) return escapeHtml(s);
+  return escapeHtml(s.slice(0, idx)) + '<mark>' + escapeHtml(s.slice(idx, idx + query.length)) + '</mark>' +
+    escapeHtml(s.slice(idx + query.length));
+}
+
+/**
+ * 検索語で記事を絞り込み、所属話題ごとにグルーピングしたうえで分野・期間・状態フィルターを適用する。
+ * DOM に触れない純粋関数。固定データでのテストは search-result.test.mjs を参照。
+ *
+ * - 話題（story）に属する記事は、話題ごとに1グループへまとめる（同じ話題の記事を1件ずつ並べない）
+ * - 話題に属さない記事は「単発記事」として個別に残す
+ * - totalArticles / totalGroups はフィルター適用前の検索結果全体を示す（完了条件: 先頭に記事数と話題数）
+ * - 状態フィルター（継続中／停止）が指定されているとき、単発記事はどちらにも該当しないため除外する
+ */
+function buildSearchResult(articles, stories, query, filters) {
+  var q = String(query || '').trim();
+  if (!q) return { query: '', totalArticles: 0, totalGroups: 0, groups: [], solos: [] };
+
+  filters = filters || {};
+  var lower = q.toLowerCase();
+  var hits = articles.filter(function (a) {
+    return (a.title + a.summary).toLowerCase().indexOf(lower) !== -1;
+  });
+
+  var storyByArticle = {};
+  stories.forEach(function (s) {
+    s.articleIds.forEach(function (id) {
+      if (!(id in storyByArticle)) storyByArticle[id] = s;
+    });
+  });
+
+  var groupMap = {};
+  var soloHits = [];
+  hits.forEach(function (a) {
+    var s = storyByArticle[a.id];
+    if (!s) { soloHits.push(a); return; }
+    (groupMap[s.id] = groupMap[s.id] || { story: s, articles: [] }).articles.push(a);
+  });
+
+  var allGroups = Object.keys(groupMap).map(function (sid) {
+    var g = groupMap[sid];
+    var sorted = g.articles.slice().sort(function (a, b) { return a.date < b.date ? 1 : -1; }); // 新しい順
+    return {
+      storyId: g.story.id,
+      storyTitle: g.story.title,
+      topic: g.story.topic,
+      live: g.story.live,
+      hitCount: sorted.length,
+      firstHitDate: sorted[sorted.length - 1].date,
+      lastHitDate: sorted[0].date,
+      articleIds: sorted.map(function (a) { return a.id; }),
+      sample: sorted[0]
+    };
+  });
+
+  function withinPeriod(dateStr) {
+    if (!filters.periodDays || !filters.today) return true;
+    return dayDiff(dateStr, filters.today) <= filters.periodDays;
+  }
+
+  var groups = allGroups.filter(function (g) {
+    if (filters.topic && g.topic !== filters.topic) return false;
+    if (!withinPeriod(g.lastHitDate)) return false;
+    if (filters.status && (filters.status === 'live') !== g.live) return false;
+    return true;
+  }).sort(function (a, b) { return a.lastHitDate < b.lastHitDate ? 1 : -1; });
+
+  var solos = soloHits.filter(function (a) {
+    if (filters.topic && a.topic !== filters.topic) return false;
+    if (!withinPeriod(a.date)) return false;
+    if (filters.status) return false;
+    return true;
+  }).sort(function (a, b) { return a.date < b.date ? 1 : -1; });
+
+  return {
+    query: q,
+    totalArticles: hits.length,
+    totalGroups: allGroups.length,
+    groups: groups,
+    solos: solos
+  };
 }
 
 (function () {
@@ -1180,6 +1313,21 @@ function buildFieldTrends(days, articles, topics, lastDate, weekCount) {
       renderFields(buildFieldTrends(D.days, D.articles, D.topics, D.lastDate, 8));
       return;
     }
+    // #36: 検索結果の分野・期間・状態フィルター（各グループの「すべて」ボタンで1操作で解除できる）
+    var filterBtn = e.target.closest ? e.target.closest('.filter-group button') : null;
+    if (filterBtn) {
+      var group = filterBtn.closest('.filter-group');
+      var key = group.dataset.filter;
+      var value = filterBtn.dataset.value;
+      if (key === 'period') searchFilters.periodDays = value ? Number(value) : null;
+      else if (key === 'topic') searchFilters.topic = value;
+      else if (key === 'status') searchFilters.status = value;
+      Array.prototype.forEach.call(group.querySelectorAll('button'), function (b) {
+        b.setAttribute('aria-pressed', String(b === filterBtn));
+      });
+      runSearch();
+      return;
+    }
     var articleLink = e.target.closest ? e.target.closest('[data-read-id]') : null;
     if (articleLink) markRead(articleLink.dataset.readId);
     // #35: 分野を選ぶと、同一画面内にその分野の直近記事を出す
@@ -1401,8 +1549,11 @@ function buildFieldTrends(days, articles, topics, lastDate, weekCount) {
     $('field-articles').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
-  // ── 全文検索
+  // ── 全文検索（#36: 話題単位にグルーピングし、分野・期間・状態で絞り込む）
   var timer = null;
+  var currentQuery = '';
+  var searchFilters = { topic: '', periodDays: null, status: '' };
+
   [$('q'), $('q-mobile')].forEach(function (input) {
     input.addEventListener('input', function () {
       var other = input === $('q') ? $('q-mobile') : $('q');
@@ -1411,18 +1562,55 @@ function buildFieldTrends(days, articles, topics, lastDate, weekCount) {
       timer = setTimeout(runSearch, 120);
     });
   });
+
+  function ensureTopicFilterOptions() {
+    var container = $('filter-topic');
+    if (container.dataset.built) return;
+    container.dataset.built = '1';
+    container.innerHTML = '<button type="button" data-value="" aria-pressed="true">すべての分野</button>' +
+      D.topics.map(function (t) {
+        return '<button type="button" data-value="' + esc(t.id) + '" aria-pressed="false">' + esc(t.label) + '</button>';
+      }).join('');
+  }
+
+  function renderSearchGroup(g) {
+    return '<li class="search-group" data-story="' + esc(g.storyId) + '" role="button" tabindex="0">' +
+      '<span class="badge ' + (g.live ? 'b-cont' : 'b-end') + '">' + (g.live ? '継続中' : '停止') + '</span>' +
+      '<b class="sg-title">' + esc(g.storyTitle) + '</b>' +
+      '<div class="sg-meta">' + esc(TOPIC[g.topic] || g.topic) + '　ヒット ' + g.hitCount + '件　' +
+      esc(g.firstHitDate) + '〜' + esc(g.lastHitDate) + '</div>' +
+      '<div class="sg-sample">' + highlightMatch(g.sample.title, currentQuery) + '</div></li>';
+  }
+
   function runSearch() {
     var q = ($('q-mobile').value || $('q').value).trim();
-    if (!q) { $('search-n').textContent = ''; $('search-body').innerHTML = '<li class="muted">検索語を入力してください。</li>'; return; }
+    currentQuery = q;
     if (!D) return;
-    var lower = q.toLowerCase();
-    var hits = D.articles.filter(function (a) {
-      return (a.title + a.summary).toLowerCase().indexOf(lower) !== -1;
-    }).sort(function (a, b) { return a.date < b.date ? 1 : -1; });
-    $('search-n').textContent = hits.length + '件';
-    $('search-body').innerHTML = hits.length
-      ? hits.map(function (a) { return articleItem(a, false, false); }).join('')
-      : '<li class="muted">見つかりませんでした。</li>';
+    if (!q) {
+      $('search-n').textContent = '';
+      $('search-filters').hidden = true;
+      $('search-groups').innerHTML = '<li class="muted">検索語を入力してください。</li>';
+      $('search-solos').innerHTML = '';
+      show('search');
+      return;
+    }
+    ensureTopicFilterOptions();
+    var filters = { topic: searchFilters.topic, periodDays: searchFilters.periodDays, status: searchFilters.status, today: D.lastDate };
+    var result = buildSearchResult(D.articles, D.stories, q, filters);
+
+    $('search-n').textContent = result.totalArticles + '件・' + result.totalGroups + '話題';
+    $('search-filters').hidden = false;
+
+    if (!result.groups.length && !result.solos.length) {
+      $('search-groups').innerHTML = '<li class="muted">見つかりませんでした。</li>';
+      $('search-solos').innerHTML = '';
+    } else {
+      $('search-groups').innerHTML = result.groups.map(renderSearchGroup).join('');
+      $('search-solos').innerHTML = result.solos.length
+        ? '<h3 class="search-solo-heading">単発記事 <small>' + result.solos.length + '件</small></h3>' +
+          '<ul class="arts">' + result.solos.map(function (a) { return articleItem(a, false, false); }).join('') + '</ul>'
+        : '';
+    }
     show('search');
   }
 })();
