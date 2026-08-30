@@ -91,6 +91,8 @@
     font-family: var(--mincho); font-size: clamp(21px, 3.4vw, 29px); font-weight: 700;
     line-height: 1.34; margin: 9px 0 8px;
   }
+  /* #33: 話題選択後にここへフォーカスを移す。キーボード操作でも選択結果の位置が分かるように残す */
+  .lead-title:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
   .lead-meta {
     font-size: 11px; color: var(--sub); letter-spacing: .06em; display: flex; gap: 16px; flex-wrap: wrap;
     border-top: 1px solid var(--ink); border-bottom: 1px solid var(--line); padding: 6px 0; margin-bottom: 16px;
@@ -167,6 +169,16 @@
   .k-unknown { background: #eae7e0; color: #5c564e; border: 1px solid var(--line); }
   .long { font-size: 9px; color: var(--accent); letter-spacing: .1em; margin-left: 5px; }
   @media (max-width: 640px) { .gantt col.c-track, .gantt th.h-track, .gantt td.c-track { display: none; } }
+  /* #33: 今日動きのない話題は折りたたみ、今日動いたものだけを先に見せる */
+  .gantt-dormant { margin-top: 14px; }
+  .gantt-dormant > summary {
+    min-height: 44px; display: flex; align-items: center; gap: 6px; cursor: pointer;
+    font-size: 12.5px; color: var(--sub); list-style: none;
+  }
+  .gantt-dormant > summary::-webkit-details-marker { display: none; }
+  .gantt-dormant > summary::before { content: "⌄"; color: var(--mute); font-size: 15px; }
+  .gantt-dormant[open] > summary::before { content: "⌃"; }
+  .gantt-dormant .gantt { margin-top: 10px; }
 
   /* ── 記事リスト ── */
   .arts { list-style: none; margin: 0; padding: 0; }
@@ -184,6 +196,8 @@
   .art-story { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 5px; }
   .art-story-title { font-size: 11px; color: var(--sub); letter-spacing: .04em; }
   .art-story-note { font-size: 10px; color: var(--mute); letter-spacing: .04em; }
+  /* #33: 「今日」画面は要約（＝今回の更新）を開閉なしで常時見せる */
+  .art-preview { margin: 6px 0 0; font-size: 12px; color: var(--sub); line-height: 1.7; }
   .article-detail { margin-top: 10px; }
   .article-detail > summary {
     width: max-content; min-height: 40px; margin-left: auto; padding: 7px 10px;
@@ -324,14 +338,19 @@
     .arts .m { font-size: 12px; line-height: 1.65; letter-spacing: .02em; }
     .art-story-title { font-size: 12px; }
     .art-story-note { font-size: 11px; }
+    .art-preview { font-size: 14px; line-height: 1.65; }
+    .article-actions a { display: inline-flex; align-items: center; min-height: 44px; }
     .article-detail { margin-top: 11px; }
     .article-detail > summary { min-height: 48px; padding: 9px 11px; font-size: 14px; }
     .article-detail > summary::before { width: 27px; height: 27px; font-size: 13px; }
     .article-detail .summary-state { font-size: 11px; }
     .summary-body { margin-top: 7px; padding: 12px 13px; }
-    .today-summary { gap: 6px; margin-bottom: 18px; }
-    .today-summary button { min-height: 70px; padding: 9px; font-size: 11px; }
-    .today-summary b { font-size: 19px; }
+    .today-summary { gap: 6px; margin-bottom: 12px; }
+    .today-summary button { min-height: 48px; padding: 8px; font-size: 11px; }
+    .today-summary b { font-size: 17px; }
+    /* #33: 「今日」は短いスクロールで全体像を把握できることを優先し、見出し・記事間の余白を詰める */
+    #p-today h2.sec { margin-top: 14px; }
+    #p-today .arts li { padding: 10px 0; }
     .daybar { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 5px; scrollbar-width: none; }
     .daybar::-webkit-scrollbar { display: none; }
     .daybar button { flex: 0 0 auto; min-height: 44px; padding: 8px 13px; font-size: 13px; }
@@ -372,9 +391,9 @@
         <h2 class="sec" style="margin-top:0">今朝の要点</h2>
         <ul class="highlights" id="highlights"></ul>
 
-        <div class="story-detail">
+        <div class="story-detail" id="story-detail">
           <span class="kicker" id="kicker"></span>
-          <h3 class="lead-title" id="lead-title"></h3>
+          <h3 class="lead-title" id="lead-title" tabindex="-1"></h3>
           <div class="lead-meta" id="lead-meta"></div>
           <ul class="tl" id="lead-tl"></ul>
         </div>
@@ -393,6 +412,13 @@
       </tr></thead>
       <tbody id="gantt"></tbody>
     </table>
+    <details class="gantt-dormant" id="gantt-dormant-wrap" hidden>
+      <summary>動きのない話題 <span id="gantt-dormant-n"></span></summary>
+      <table class="gantt">
+        <colgroup><col><col style="width:64px"><col class="c-track" style="width:38%"><col style="width:46px"></colgroup>
+        <tbody id="gantt-dormant"></tbody>
+      </table>
+    </details>
     <button class="subnav-action" type="button" data-open-pane="terrain">分野ごとの地形を見る</button>
   </section>
 
@@ -847,13 +873,15 @@ function classifyTodayArticles(stories, todayArticleIds, lastDate) {
         }).join('')
       : '<li class="muted">きょうは動きがありませんでした。</li>';
 
-    // 経過表: 記事3件以上を、直近に動いた順で
+    // 経過表: 記事3件以上を、直近に動いた順で。#33: 今日動いたものを先に出し、動きなしは折りたたむ
     var rows = D.stories.filter(function (s) { return s.count >= 3; }).slice(0, 24);
+    var movedToday = rows.filter(function (s) { return s.dates.indexOf(last) !== -1; });
+    var dormant = rows.filter(function (s) { return s.dates.indexOf(last) === -1; });
     $('gantt-n').textContent = '記事3件以上・' + rows.length + '本　／　赤＝直近1週間に動きあり';
     var span = Math.max(1, day(D.firstDate, D.lastDate));
     var pct = function (dt) { return 100 * day(D.firstDate, dt) / span; };
 
-    $('gantt').innerHTML = rows.map(function (s) {
+    function ganttRow(s) {
       var left = pct(s.firstSeen), w = Math.max(0.8, pct(s.lastSeen) - left);
       var ticks = s.dates.map(function (dt) {
         return '<span class="tick' + (s.live ? ' live' : '') + '" style="left:calc(' + pct(dt).toFixed(1) + '% - 3px)"></span>';
@@ -866,7 +894,12 @@ function classifyTodayArticles(stories, todayArticleIds, lastDate) {
         '<td class="c-track"><div class="track"><div class="bar' + (s.live ? ' live' : '') +
           '" style="left:' + left.toFixed(1) + '%;width:' + w.toFixed(1) + '%"></div>' + ticks + '</div></td>' +
         '<td class="n">' + s.count + '</td></tr>';
-    }).join('');
+    }
+
+    $('gantt').innerHTML = movedToday.map(ganttRow).join('');
+    $('gantt-dormant').innerHTML = dormant.map(ganttRow).join('');
+    $('gantt-dormant-wrap').hidden = dormant.length === 0;
+    $('gantt-dormant-n').textContent = dormant.length ? dormant.length + '件' : '';
   }
 
   function storyScore(s) {
@@ -925,9 +958,12 @@ function classifyTodayArticles(stories, todayArticleIds, lastDate) {
         ? '<li class="timeline-more"><details><summary>途中の経過 ' + older.length + '件を表示</summary><ul class="tl">' + older.map(timelineItem).join('') + '</ul></details></li>'
         : '')
       : '<li class="muted">記事が見つかりませんでした。</li>';
-    Array.prototype.forEach.call($('gantt').querySelectorAll('tr'), function (tr) {
+    Array.prototype.forEach.call(document.querySelectorAll('.gantt tbody tr'), function (tr) {
       tr.setAttribute('aria-selected', String(tr.dataset.story === s.id));
     });
+    // 選ばれた話題が「動きのない話題」側にあれば、開いて見えるようにする
+    var dormantRow = $('gantt-dormant').querySelector('tr[data-story="' + CSS.escape(s.id) + '"]');
+    if (dormantRow) $('gantt-dormant-wrap').open = true;
   }
 
   function timelineItem(a) {
@@ -963,7 +999,9 @@ function classifyTodayArticles(stories, todayArticleIds, lastDate) {
     if (!s) return;
     show('flow');
     showStory(s, s.live ? '追っている流れ' : '止まっている流れ');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    // #33: 選択直後にトップへ戻すのではなく、更新された詳細見出しへスクロール・フォーカスする
+    $('lead-title').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    $('lead-title').focus({ preventScroll: true });
   });
   document.addEventListener('keydown', function (e) {
     if (e.key !== 'Enter' && e.key !== ' ') return;
@@ -1003,7 +1041,10 @@ function classifyTodayArticles(stories, todayArticleIds, lastDate) {
   var STORY_STATUS_BADGE = { new: 'b-new', continued: 'b-cont', solo: 'b-solo' };
   var STORY_STATUS_LABEL = { new: '新規', continued: '続報', solo: '単発' };
 
-  /** #32: 今日の記事へ「新規／続報／単発」の状態と所属話題名を付ける（今日画面だけで使う） */
+  /**
+   * #32: 今日の記事へ「新規／続報／単発」の状態と所属話題名を付ける（今日画面だけで使う）。
+   * 新規は話題名が記事見出しとほぼ同一になりがちなので、バッジのみにして重複を避ける（#33）。
+   */
   function storyMetaLine(meta) {
     if (!meta) return '';
     var note = '';
@@ -1011,34 +1052,43 @@ function classifyTodayArticles(stories, todayArticleIds, lastDate) {
       note = meta.dayNumber + '日目';
       if (meta.gapDays) note += '　前回から' + meta.gapDays + '日ぶり';
     }
+    var showTitle = meta.status !== 'new' && meta.storyTitle;
     return '<div class="art-story"><span class="badge ' + STORY_STATUS_BADGE[meta.status] + '">' +
       STORY_STATUS_LABEL[meta.status] + '</span>' +
-      (meta.storyTitle ? '<span class="art-story-title">' + esc(meta.storyTitle) + '</span>' : '') +
+      (showTitle ? '<span class="art-story-title">' + esc(meta.storyTitle) + '</span>' : '') +
       (note ? '<span class="art-story-note">' + esc(note) + '</span>' : '') + '</div>';
   }
 
-  function articleItem(a, open, withImportance, storyMeta) {
+  /**
+   * #33: 今日画面では要約（＝今回の更新）を開閉なしで常時見せる。アーカイブ・検索では
+   * 従来どおり details の開閉に入れたまま（一覧の密度を優先するため）。
+   */
+  function articleItem(a, open, withImportance, storyMeta, previewSummary) {
+      var body = previewSummary
+        ? '<p class="art-preview">' + esc(a.summary) + '</p><div class="article-actions"><a href="' + esc(a.url) +
+          '" target="_blank" rel="noopener" data-read-id="' + esc(a.id) + '">元記事を開く ↗</a></div>'
+        : '<details class="article-detail"' + (open ? ' open' : '') + '><summary><span>記事の要点</span>' +
+          '<span class="summary-state when-closed">タップして表示</span><span class="summary-state when-open">表示中</span></summary>' +
+          '<div class="summary-body"><div class="s">' + esc(a.summary) + '</div><div class="article-actions"><a href="' + esc(a.url) +
+          '" target="_blank" rel="noopener" data-read-id="' + esc(a.id) + '">元記事を開く ↗</a></div></div></details>';
       return '<li data-article="' + esc(a.id) + '"' + (isRead(a.id) ? ' class="read"' : '') + '>' +
         storyMetaLine(storyMeta) + '<div class="h">' +
         (isRead(a.id) ? '' : '<span class="unread-dot" aria-label="未読"></span>') + esc(a.title) + '</div>' +
         '<div class="m"><span class="tp">' + esc(TOPIC[a.topic] || a.topic) + '</span>' +
         source(a) + (withImportance ? '重要度 ' + '●'.repeat(a.score) + '○'.repeat(Math.max(0, 5 - a.score)) + '　' : '') +
-        published(a) + '</div><details class="article-detail"' + (open ? ' open' : '') + '><summary><span>記事の要点</span>' +
-        '<span class="summary-state when-closed">タップして表示</span><span class="summary-state when-open">表示中</span></summary>' +
-        '<div class="summary-body"><div class="s">' + esc(a.summary) + '</div><div class="article-actions"><a href="' + esc(a.url) +
-        '" target="_blank" rel="noopener" data-read-id="' + esc(a.id) + '">元記事を開く ↗</a></div></div></details></li>';
+        published(a) + '</div>' + body + '</li>';
   }
 
   var TODAY_GROUP_TITLE = { new: '新しく発見した話題', continued: '続報', solo: 'その他の注目' };
 
-  /** #32: 分類済みグループ1件分を記事リストへ（重要度順・未読フィルタ込み。1件目のみ要点を初期展開） */
+  /** #32/#33: 分類済みグループ1件分を記事リストへ（重要度順・未読フィルタ込み。要約は開閉なしで常時表示） */
   function todayGroupList(items, meta) {
     var withArticle = items.map(function (it) { return { article: ART[it.id], meta: meta(it) }; })
       .filter(function (x) { return x.article; })
       .sort(function (x, y) { return y.article.score - x.article.score; });
     var visible = unreadOnly ? withArticle.filter(function (x) { return !isRead(x.article.id); }) : withArticle;
     if (!visible.length) return '<li class="muted">' + (unreadOnly ? '未読の記事はありません。' : '記事がありません。') + '</li>';
-    return visible.map(function (x, i) { return articleItem(x.article, i === 0, true, x.meta); }).join('');
+    return visible.map(function (x) { return articleItem(x.article, false, true, x.meta, true); }).join('');
   }
 
   function todayGroupSection(key, items) {
