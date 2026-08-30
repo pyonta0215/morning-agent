@@ -16,6 +16,8 @@
   :root {
     --ink: #14110e; --sub: #55504a; --mute: #9b948c; --line: #d9d4cb;
     --accent: #a81a12; --bg: #efece5; --paper: #fbfaf6;
+    --accent-soft: #f5e8e5; --surface: #fff; --surface-muted: #f3f0e9;
+    --shadow-sm: 0 2px 10px rgba(39,31,24,.055); --radius: 12px;
     --mincho: "Hiragino Mincho ProN", "Yu Mincho", "YuMincho", "Noto Serif JP", serif;
     --gothic: "Hiragino Kaku Gothic ProN", "Yu Gothic", system-ui, sans-serif;
   }
@@ -26,6 +28,16 @@
     -webkit-text-size-adjust: 100%;
   }
   a { color: inherit; }
+  button, input, summary { -webkit-tap-highlight-color: transparent; }
+  button, summary { touch-action: manipulation; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  @media (hover: hover) {
+    button:hover, summary:hover { border-color: #bcb4a9; }
+    .filter-group button:hover, .field-sort button:hover, .filter-unread:hover { color: var(--accent); border-color: #d6aaa6; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    button, summary, .article-actions a { transition: background-color .16s ease, border-color .16s ease, color .16s ease, transform .12s ease; }
+  }
   .sheet {
     max-width: 1080px; margin: 0 auto; background: var(--paper);
     border-left: 1px solid var(--line); border-right: 1px solid var(--line);
@@ -61,8 +73,9 @@
     font-family: var(--mincho); font-size: 13.5px; letter-spacing: .22em; text-indent: .22em;
     padding: 7px 20px; margin: 0 3px 0 0; cursor: pointer;
     background: #e8e5de; color: var(--sub);
-    border: 1px solid var(--line); border-bottom: 0; border-radius: 0;
+    border: 1px solid var(--line); border-bottom: 0; border-radius: 5px 5px 0 0;
   }
+  .tab-icon { display: none; }
   .tabs button[aria-selected="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
   .tabs .search { margin-left: auto; padding: 0 0 5px; }
   .tabs input {
@@ -227,11 +240,12 @@
   /* ── 検索結果（#36: 話題単位のグループ＋分野・期間・状態フィルター） ── */
   .search-filters { display: flex; flex-wrap: wrap; gap: 10px 16px; margin: 4px 0 18px; }
   .filter-group { display: flex; flex-wrap: wrap; gap: 6px; }
+  .filter-label { flex: 0 0 100%; font-size: 10px; font-weight: 700; color: var(--mute); letter-spacing: .12em; }
   .filter-group button {
     min-height: 34px; padding: 5px 11px; border: 1px solid var(--line); background: #fff;
-    color: var(--sub); font: 11.5px var(--gothic); cursor: pointer;
+    color: var(--sub); font: 11.5px var(--gothic); cursor: pointer; border-radius: 999px;
   }
-  .filter-group button[aria-pressed="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .filter-group button[aria-pressed="true"] { background: var(--accent); color: #fff; border-color: var(--accent); }
   .search-groups { list-style: none; margin: 0; padding: 0; }
   .search-groups .search-group { padding: 12px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
   .sg-title { display: block; font-family: var(--mincho); font-size: 14.5px; font-weight: 700; line-height: 1.5; margin-top: 4px; }
@@ -268,9 +282,9 @@
   .list-tools { display: flex; justify-content: flex-end; margin: -2px 0 4px; }
   .filter-unread {
     min-height: 38px; padding: 6px 11px; border: 1px solid var(--line); background: #fff;
-    color: var(--sub); font: 12px var(--gothic); cursor: pointer;
+    color: var(--sub); font: 12px var(--gothic); cursor: pointer; border-radius: 999px;
   }
-  .filter-unread[aria-pressed="true"] { color: #fff; background: var(--ink); border-color: var(--ink); }
+  .filter-unread[aria-pressed="true"] { color: #fff; background: var(--accent); border-color: var(--accent); }
   .subnav-action { display: none; }
   .unread-dot { display: inline-block; width: 7px; height: 7px; margin: 0 7px 1px 0; border-radius: 50%; background: var(--accent); }
   .today-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 12px 0 22px; }
@@ -280,7 +294,7 @@
   .daybar { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 4px; }
   .daybar button {
     font-family: var(--gothic); font-size: 11px; padding: 4px 9px; cursor: pointer;
-    background: #fff; border: 1px solid var(--line); color: var(--sub); border-radius: 0;
+    background: #fff; border: 1px solid var(--line); color: var(--sub); border-radius: 999px;
   }
   .daybar button[aria-selected="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
   .monthbar { margin-bottom: 10px; }
@@ -291,9 +305,9 @@
   .field-sort { display: flex; gap: 8px; margin: 14px 0 4px; }
   .field-sort button {
     min-height: 36px; padding: 6px 13px; border: 1px solid var(--line); background: #fff;
-    color: var(--sub); font: 12px var(--gothic); cursor: pointer;
+    color: var(--sub); font: 12px var(--gothic); cursor: pointer; border-radius: 999px;
   }
-  .field-sort button[aria-pressed="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .field-sort button[aria-pressed="true"] { background: var(--accent); color: #fff; border-color: var(--accent); }
   .fields { list-style: none; margin: 0; padding: 0; }
   .fields .field { padding: 12px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
   .field-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
@@ -313,26 +327,33 @@
   [hidden] { display: none !important; }
 
   @media (max-width: 640px) {
-    body { padding-bottom: calc(61px + env(safe-area-inset-bottom)); line-height: 1.65; }
-    .sheet { padding: 12px 17px 38px; }
-    .masthead .name { font-size: 21px; }
+    body { padding-bottom: calc(78px + env(safe-area-inset-bottom)); background: var(--paper); line-height: 1.65; }
+    .sheet { padding: 12px 16px 38px; }
+    .masthead { text-align: left; border-bottom: 0; padding: 3px 0 7px; }
+    .masthead .name { font-size: 22px; letter-spacing: .1em; text-indent: 0; }
     .masthead .sub { display: none; }
-    .colophon { display: block; font-size: 11px; line-height: 1.55; }
+    .colophon { display: block; padding: 7px 0 9px; border-bottom-color: var(--line); font-size: 11px; line-height: 1.55; }
     .colophon > span { display: block; }
+    .colophon > span:last-child { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 5px; }
     #stat { margin-right: 8px; }
+    .auth-action { min-height: 32px; padding: 2px 9px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); letter-spacing: 0; }
 
     .tabs {
       position: fixed; z-index: 20; left: 0; right: 0; bottom: 0; margin: 0;
-      padding-bottom: env(safe-area-inset-bottom); flex-wrap: nowrap; align-items: stretch;
-      border-top: 1px solid var(--line); border-bottom: 0; background: rgba(251,250,246,.97);
-      box-shadow: 0 -4px 16px rgba(20,17,14,.08); backdrop-filter: blur(10px);
+      gap: 2px; padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); flex-wrap: nowrap; align-items: stretch;
+      border-top: 1px solid rgba(217,212,203,.8); border-bottom: 0; background: rgba(255,255,255,.94);
+      box-shadow: 0 -8px 28px rgba(20,17,14,.1); backdrop-filter: blur(16px);
     }
     .tabs button {
       flex: 1; min-width: 0; min-height: 56px; margin: 0; padding: 8px 3px 6px;
       border: 0; background: transparent; font-family: var(--gothic); font-size: 12px;
-      letter-spacing: .02em; text-indent: 0;
+      letter-spacing: .02em; text-indent: 0; border-radius: 10px;
     }
-    .tabs button[aria-selected="true"] { background: transparent; color: var(--accent); box-shadow: inset 0 3px var(--accent); }
+    .tabs button[aria-selected="true"] { background: var(--accent-soft); color: var(--accent); box-shadow: none; font-weight: 700; }
+    .tab-icon { display: block; width: 21px; height: 21px; margin: 0 auto 2px; stroke-width: 1.8; }
+    .tabs button[aria-selected="true"] .tab-icon { stroke-width: 2.25; }
+    .tabs button:active, .today-summary button:active, .subnav-action:active,
+    .filter-group button:active, .field-sort button:active, .filter-unread:active { transform: scale(.97); }
     .tabs button[data-tab="today"] { order: 1; }
     .tabs button[data-tab="flow"] { order: 2; }
     .tabs button[data-tab="archive"] { order: 3; }
@@ -341,8 +362,9 @@
     .tabs .search { display: none; }
     .tabs .search-tab { display: block; order: 5; }
 
-    h2.sec { margin-top: 22px; font-size: 14px; letter-spacing: .16em; align-items: center; }
-    h2.sec small { margin-left: auto; text-align: right; }
+    h2.sec { margin: 24px 0 12px; padding: 0; border-bottom: 0; font-size: 18px; letter-spacing: .04em; align-items: center; }
+    h2.sec::before { content: ""; width: 4px; height: 18px; flex: 0 0 auto; border-radius: 3px; background: var(--accent); }
+    h2.sec small { margin-left: auto; padding: 3px 8px; border-radius: 999px; background: var(--surface-muted); text-align: right; font-size: 10.5px; }
     .front { display: flex; flex-direction: column; margin-top: 13px; }
     .lead-title { font-size: 23px; }
     .lead-meta { gap: 5px 13px; font-size: 12px; }
@@ -362,16 +384,18 @@
     .timeline-more::before { display: none; }
     .timeline-more > details > summary { min-height: 44px; display: flex; align-items: center; color: var(--accent); font-size: 13px; cursor: pointer; }
     .timeline-more .tl { margin-top: 8px; }
-    .moved li { position: relative; min-height: 62px; padding: 11px 28px 11px 0; }
-    .moved li[data-story]::after { content: "›"; position: absolute; right: 3px; top: 50%; transform: translateY(-50%); color: var(--mute); font-size: 23px; }
+    .moved { display: grid; gap: 8px; }
+    .moved li { position: relative; min-height: 66px; padding: 12px 38px 12px 13px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow-sm); }
+    .moved li[data-story]::after { content: "›"; position: absolute; right: 14px; top: 50%; transform: translateY(-50%); color: var(--mute); font-size: 23px; }
     .moved b { font-size: 16px; }
     .moved .note { display: block; margin-top: 3px; font-size: 12px; }
     .badge { font-size: 10px; }
 
-    .highlights { margin-bottom: 20px; }
-    .highlights .highlight { position: relative; min-height: 54px; padding: 12px 26px 12px 0; }
+    .highlights { display: grid; gap: 8px; margin-bottom: 18px; }
+    .highlights .highlight { position: relative; min-height: 60px; padding: 12px 38px 12px 13px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow-sm); }
+    .highlights .highlight.lead { padding: 14px 38px 14px 13px; border-color: #d8aaa5; background: linear-gradient(145deg, #fff 60%, #fbf2ef); }
     .highlights .highlight[data-story]::after {
-      content: "›"; position: absolute; right: 2px; top: 18px; color: var(--mute); font-size: 21px;
+      content: "›"; position: absolute; right: 14px; top: 18px; color: var(--mute); font-size: 21px;
     }
     .highlights .highlight.lead[data-story]::after { top: 50%; transform: translateY(-50%); }
     .highlights .h-title { font-size: 16px; }
@@ -383,7 +407,7 @@
     .gantt { display: block; }
     .gantt colgroup, .gantt thead { display: none; }
     .gantt tbody { display: grid; gap: 8px; }
-    .gantt tbody tr { display: grid; grid-template-columns: 1fr auto; min-height: 82px; padding: 12px; border: 1px solid var(--line); background: #fff; }
+    .gantt tbody tr { display: grid; grid-template-columns: 1fr auto; min-height: 80px; padding: 12px 13px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow-sm); }
     .gantt td { display: block; padding: 0; border: 0; }
     .gantt td.t { grid-column: 1 / -1; padding-right: 4px; font-size: 16px; }
     .gantt td.t em { font-size: 11px; margin-top: 5px; }
@@ -391,39 +415,49 @@
     .gantt td.n { align-self: end; margin-top: 9px; font-size: 12px; }
     .gantt td.n::after { content: "記事"; margin-left: 2px; }
     .gantt tbody tr[aria-selected="true"] { border-color: #d4a09b; }
+    .gantt-dormant > summary { margin-top: 5px; padding: 0 12px; border-radius: 10px; background: var(--surface-muted); }
 
-    .arts li { padding: 15px 0; }
+    .arts { display: grid; gap: 8px; }
+    .arts li { padding: 13px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow-sm); }
     .arts .h { font-size: 17px; line-height: 1.55; }
     .arts .s { font-size: 14px; line-height: 1.65; }
     .arts .m { font-size: 12px; line-height: 1.65; letter-spacing: .02em; }
     .art-story-title { font-size: 12px; }
     .art-story-note { font-size: 11px; }
     .art-preview { font-size: 14px; line-height: 1.65; }
-    .article-actions a { display: inline-flex; align-items: center; min-height: 44px; }
+    .article-actions a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 13px; border: 1px solid #d6aaa6; border-radius: 9px; background: #fff; }
+    .article-actions a::after { content: "↗"; margin-left: 7px; font-size: 14px; }
     .article-detail { margin-top: 11px; }
-    .article-detail > summary { min-height: 48px; padding: 9px 11px; font-size: 14px; }
+    .article-detail > summary { min-height: 48px; padding: 9px 12px; border-radius: 10px; background: var(--surface-muted); font-size: 14px; }
     .article-detail > summary::before { width: 27px; height: 27px; font-size: 13px; }
     .article-detail .summary-state { font-size: 11px; }
-    .summary-body { margin-top: 7px; padding: 12px 13px; }
+    .summary-body { margin-top: 7px; padding: 13px 14px; border-radius: 10px; }
     .today-summary { gap: 6px; margin-bottom: 12px; }
-    .today-summary button { min-height: 48px; padding: 8px; font-size: 11px; }
-    .today-summary b { font-size: 17px; }
+    .today-summary button { position: relative; min-height: 60px; padding: 9px; border-radius: 11px; background: var(--surface); box-shadow: var(--shadow-sm); font-size: 11px; }
+    .today-summary button::after { content: "↓"; position: absolute; right: 9px; bottom: 9px; color: var(--mute); font-size: 12px; }
+    .today-summary b { font-size: 19px; }
     /* #33: 「今日」は短いスクロールで全体像を把握できることを優先し、見出し・記事間の余白を詰める */
     #p-today h2.sec { margin-top: 14px; }
-    #p-today .arts li { padding: 10px 0; }
+    #p-today .arts li { padding: 12px; }
     .daybar { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 5px; scrollbar-width: none; }
     .daybar::-webkit-scrollbar { display: none; }
     .daybar button { flex: 0 0 auto; min-height: 44px; padding: 8px 13px; font-size: 13px; }
     /* #35: 縦リストのため横スクロールは元々不要。タップ領域だけ広げる */
-    .fields .field { min-height: 44px; padding: 14px 0; }
+    .fields { display: grid; gap: 9px; }
+    .fields .field { min-height: 44px; padding: 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow-sm); }
     .field-sort button { min-height: 44px; }
     .field-label { font-size: 16px; }
     .field-numbers { font-size: 12px; }
-    .subnav-action { display: block; width: 100%; min-height: 48px; margin-top: 14px; border: 1px solid var(--line); background: #fff; color: var(--sub); font: 13px var(--gothic); }
-    #p-search .search-mobile { position: sticky; top: 0; z-index: 5; padding: 10px 0; background: var(--paper); }
-    #p-search input { width: 100%; min-height: 48px; padding: 10px 13px; border: 1px solid var(--ink); background: #fff; color: var(--ink); font-size: 16px; }
+    .subnav-action { display: block; width: 100%; min-height: 50px; margin-top: 16px; border: 1px solid #d6aaa6; border-radius: 11px; background: var(--accent-soft); color: var(--accent); font: 700 13px var(--gothic); }
+    #p-search .search-mobile { position: sticky; top: 0; z-index: 5; margin: 0 -16px; padding: 10px 16px; background: rgba(251,250,246,.94); backdrop-filter: blur(12px); }
+    #p-search input { width: 100%; min-height: 50px; padding: 10px 15px; border: 1px solid var(--line); border-radius: 12px; background: #fff; box-shadow: var(--shadow-sm); color: var(--ink); font-size: 16px; }
     .filter-group button { min-height: 44px; }
-    .search-groups .search-group { padding: 14px 0; }
+    .search-filters { display: grid; gap: 14px; margin-top: 2px; padding: 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-muted); }
+    .filter-group { gap: 7px; }
+    .filter-label { font-size: 11px; }
+    .search-groups { display: grid; gap: 9px; }
+    .search-groups .search-group { position: relative; padding: 14px 38px 14px 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow-sm); }
+    .search-groups .search-group::after { content: "›"; position: absolute; right: 14px; top: 50%; transform: translateY(-50%); color: var(--mute); font-size: 22px; }
     .sg-title { font-size: 16px; }
     .sg-meta { font-size: 12px; }
     .sg-sample { font-size: 13px; }
@@ -443,12 +477,12 @@
   </div>
 
   <div class="tabs" role="tablist">
-    <button role="tab" data-tab="flow" aria-selected="true">流れ</button>
-    <button role="tab" data-tab="today" aria-selected="false">今日</button>
-    <button role="tab" data-tab="archive" aria-selected="false">過去</button>
-    <button role="tab" data-tab="terrain" aria-selected="false">動向</button>
+    <button role="tab" data-tab="flow" aria-selected="true"><svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M5 6h14M5 12h10M5 18h7" stroke-linecap="round"/><circle cx="18" cy="12" r="2.5"/><circle cx="15" cy="18" r="2.5"/></svg><span>流れ</span></button>
+    <button role="tab" data-tab="today" aria-selected="false"><svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><rect x="4" y="5.5" width="16" height="14" rx="2.5"/><path d="M8 3.5v4M16 3.5v4M4 10h16" stroke-linecap="round"/><path d="m9 15 2 2 4-4" stroke-linecap="round" stroke-linejoin="round"/></svg><span>今日</span></button>
+    <button role="tab" data-tab="archive" aria-selected="false"><svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M5 7.5h14v12H5zM4 4.5h16v3H4z" stroke-linejoin="round"/><path d="M9 11.5h6" stroke-linecap="round"/></svg><span>過去</span></button>
+    <button role="tab" data-tab="terrain" aria-selected="false"><svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M4 18V12M10 18V8M16 18V4M22 18H2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>動向</span></button>
     <span class="search"><input id="q" type="search" placeholder="全文検索（見出し・要約）" autocomplete="off"></span>
-    <button role="tab" class="search-tab" data-tab="search" aria-selected="false">検索</button>
+    <button role="tab" class="search-tab" data-tab="search" aria-selected="false"><svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 4.5 4.5" stroke-linecap="round"/></svg><span>検索</span></button>
   </div>
 
   <div id="err" class="err" hidden></div>
@@ -524,13 +558,15 @@
     <div class="search-mobile"><input id="q-mobile" type="search" placeholder="見出し・要約を検索" autocomplete="off"></div>
     <h2 class="sec">検索結果 <small id="search-n"></small></h2>
     <div class="search-filters" id="search-filters" hidden>
-      <div class="filter-group" id="filter-topic" data-filter="topic"></div>
-      <div class="filter-group" data-filter="period">
+      <div class="filter-group" id="filter-topic" data-filter="topic" role="group" aria-label="分野で絞り込む"></div>
+      <div class="filter-group" data-filter="period" role="group" aria-label="期間で絞り込む">
+        <span class="filter-label">期間</span>
         <button type="button" data-value="" aria-pressed="true">全期間</button>
         <button type="button" data-value="7" aria-pressed="false">直近7日</button>
         <button type="button" data-value="30" aria-pressed="false">直近30日</button>
       </div>
-      <div class="filter-group" data-filter="status">
+      <div class="filter-group" data-filter="status" role="group" aria-label="状態で絞り込む">
+        <span class="filter-label">状態</span>
         <button type="button" data-value="" aria-pressed="true">すべての状態</button>
         <button type="button" data-value="live" aria-pressed="false">継続中</button>
         <button type="button" data-value="dormant" aria-pressed="false">停止</button>
@@ -1406,11 +1442,11 @@ function buildSearchResult(articles, stories, query, filters) {
   function articleItem(a, open, withImportance, storyMeta, previewSummary) {
       var body = previewSummary
         ? '<p class="art-preview">' + esc(a.summary) + '</p><div class="article-actions"><a href="' + esc(a.url) +
-          '" target="_blank" rel="noopener" data-read-id="' + esc(a.id) + '">元記事を開く ↗</a></div>'
+          '" target="_blank" rel="noopener" data-read-id="' + esc(a.id) + '">元記事を開く</a></div>'
         : '<details class="article-detail"' + (open ? ' open' : '') + '><summary><span>記事の要点</span>' +
           '<span class="summary-state when-closed">タップして表示</span><span class="summary-state when-open">表示中</span></summary>' +
           '<div class="summary-body"><div class="s">' + esc(a.summary) + '</div><div class="article-actions"><a href="' + esc(a.url) +
-          '" target="_blank" rel="noopener" data-read-id="' + esc(a.id) + '">元記事を開く ↗</a></div></div></details>';
+          '" target="_blank" rel="noopener" data-read-id="' + esc(a.id) + '">元記事を開く</a></div></div></details>';
       return '<li data-article="' + esc(a.id) + '"' + (isRead(a.id) ? ' class="read"' : '') + '>' +
         storyMetaLine(storyMeta) + '<div class="h">' +
         (isRead(a.id) ? '' : '<span class="unread-dot" aria-label="未読"></span>') + esc(a.title) + '</div>' +
@@ -1567,7 +1603,7 @@ function buildSearchResult(articles, stories, query, filters) {
     var container = $('filter-topic');
     if (container.dataset.built) return;
     container.dataset.built = '1';
-    container.innerHTML = '<button type="button" data-value="" aria-pressed="true">すべての分野</button>' +
+    container.innerHTML = '<span class="filter-label">分野</span><button type="button" data-value="" aria-pressed="true">すべて</button>' +
       D.topics.map(function (t) {
         return '<button type="button" data-value="' + esc(t.id) + '" aria-pressed="false">' + esc(t.label) + '</button>';
       }).join('');
