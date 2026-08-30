@@ -99,6 +99,31 @@
   }
   .lead-meta b { color: var(--accent); }
 
+  /* ── 話題詳細の3層（#34: 今回の更新 → ここまでの経過 → 根拠記事） ── */
+  .latest-block { margin: 0 0 18px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+  .latest-label { display: inline-block; background: var(--accent); color: #fff;
+    font-size: 10.5px; font-weight: 700; letter-spacing: .2em; padding: 3px 10px; margin-bottom: 8px; }
+  .latest-date { display: block; font-size: 11px; color: var(--mute); letter-spacing: .06em; margin-top: 2px; }
+  .latest-title { display: block; font-family: var(--mincho); font-size: 17px; font-weight: 700;
+    line-height: 1.5; margin-top: 5px; text-decoration: none; border-bottom: 1px solid #cdc7bd; }
+  .latest-title:hover { border-bottom-color: var(--accent); }
+  .latest-block .read .latest-title { opacity: .58; }
+  .latest-summary { font-size: 13px; color: var(--sub); line-height: 1.75; margin: 8px 0 0; }
+
+  .storyline { list-style: none; margin: 0 0 20px; padding: 0; display: flex; border-top: 1px solid var(--line); }
+  .storyline li { flex: 1; min-width: 0; padding: 10px 12px 0 0; border-right: 1px solid var(--line); }
+  .storyline li:last-child { padding-right: 0; border-right: 0; }
+  .storyline li.read .sl-title { opacity: .58; }
+  .sl-label { display: block; font-size: 10px; color: var(--accent); font-weight: 700; letter-spacing: .14em; }
+  .sl-date { display: block; font-size: 10px; color: var(--mute); margin-top: 3px; }
+  .sl-title { display: block; font-family: var(--mincho); font-size: 13px; line-height: 1.5; margin-top: 4px;
+    text-decoration: none; border-bottom: 1px solid #cdc7bd; }
+  .sl-title:hover { border-bottom-color: var(--accent); }
+
+  .evidence-heading { font-family: var(--mincho); font-size: 11.5px; font-weight: 700; letter-spacing: .2em;
+    color: var(--sub); margin: 0 0 10px; }
+  .evidence-heading small { font-family: var(--gothic); font-size: 10px; letter-spacing: 0; color: var(--mute); font-weight: 400; }
+
   .tl { list-style: none; margin: 0; padding: 0 0 0 18px; border-left: 2px solid var(--line); }
   .tl li { position: relative; padding: 0 0 14px 16px; font-family: var(--mincho); font-size: 14px; line-height: 1.6; }
   .tl li::before {
@@ -293,6 +318,13 @@
     .front { display: flex; flex-direction: column; margin-top: 13px; }
     .lead-title { font-size: 23px; }
     .lead-meta { gap: 5px 13px; font-size: 12px; }
+    /* #34: PCは横並びで俯瞰、モバイルは縦読みの密度を優先して1列に積む */
+    .latest-title { font-size: 19px; }
+    .latest-summary { font-size: 14px; line-height: 1.7; }
+    .storyline { flex-direction: column; gap: 10px; }
+    .storyline li { padding: 0 0 10px; border-right: 0; border-bottom: 1px solid var(--line); }
+    .storyline li:last-child { padding-bottom: 0; border-bottom: 0; }
+    .sl-title { font-size: 15px; }
     .tl { padding-left: 13px; }
     .tl li { padding: 0 0 17px 15px; font-size: 16px; }
     .tl li::before { left: -19px; }
@@ -395,6 +427,12 @@
           <span class="kicker" id="kicker"></span>
           <h3 class="lead-title" id="lead-title" tabindex="-1"></h3>
           <div class="lead-meta" id="lead-meta"></div>
+
+          <div class="latest-block" id="latest-block"></div>
+
+          <ol class="storyline" id="storyline"></ol>
+
+          <h4 class="evidence-heading">根拠記事 <small id="evidence-n"></small></h4>
           <ul class="tl" id="lead-tl"></ul>
         </div>
       </div>
@@ -552,6 +590,42 @@ function classifyTodayArticles(stories, todayArticleIds, lastDate) {
     });
   });
   return groups;
+}
+
+/**
+ * 話題の記事群を「今回の更新」「ここまでの経過（初出／前回／今回）」「根拠記事（全件・中間は折りたたみ）」
+ * へ組み立てる。DOM に触れない純粋関数。固定データでのテストは story-narrative.test.mjs を参照。
+ * 新しい要約は作らず、既存の記事要約と日付だけで決定的に組み立てる。
+ *
+ * - 記事1件: storyline は「初出」のみ（今回＝初出なので重複表示しない）
+ * - 記事2件: storyline は「初出」「今回」（前回＝初出と同じなので省略）
+ * - 記事3件以上: storyline は「初出」「前回」「今回」
+ */
+function buildStoryNarrative(articleIds, articleById) {
+  var items = articleIds
+    .map(function (id) { return articleById[id]; })
+    .filter(Boolean)
+    .sort(function (a, b) { return a.date < b.date ? -1 : (a.date > b.date ? 1 : 0); });
+  if (!items.length) return null;
+
+  var first = items[0];
+  var latest = items[items.length - 1];
+  var prev = items.length >= 3 ? items[items.length - 2] : null;
+
+  var storyline = [{ label: '初出', article: first }];
+  if (prev && prev.id !== first.id) storyline.push({ label: '前回', article: prev });
+  if (latest.id !== first.id) storyline.push({ label: '今回', article: latest });
+
+  var evidenceVisible = items.length <= 5 ? items : [items[0]].concat(items.slice(-4));
+  var evidenceCollapsed = items.length <= 5 ? [] : items.slice(1, -4);
+
+  return {
+    latest: latest,
+    storyline: storyline,
+    evidenceVisible: evidenceVisible,
+    evidenceCollapsed: evidenceCollapsed,
+    total: items.length
+  };
 }
 
 (function () {
@@ -939,7 +1013,7 @@ function classifyTodayArticles(stories, todayArticleIds, lastDate) {
     }).join('');
   }
 
-  /** 話題を一面に出す */
+  /** 話題を一面に出す（#34: 今回の更新 → ここまでの経過 → 根拠記事、の3層で構成する） */
   function showStory(s, kicker) {
     $('kicker').textContent = kicker;
     $('lead-title').textContent = s.title;
@@ -948,22 +1022,50 @@ function classifyTodayArticles(stories, todayArticleIds, lastDate) {
       '<span><b>' + s.spanDays + '日間</b></span><span>記事 <b>' + s.count + '件</b></span>' +
       '<span>' + esc(TOPIC[s.topic] || s.topic) + '</span><span>' + esc(s.kindLabel) + '</span>';
 
-    var items = s.articleIds.map(function (id) { return ART[id]; })
-      .filter(Boolean)
-      .sort(function (a, b) { return a.date < b.date ? -1 : 1; });
-    var visible = items.length <= 5 ? items : [items[0]].concat(items.slice(-4));
-    var older = items.length <= 5 ? [] : items.slice(1, -4);
-    $('lead-tl').innerHTML = items.length
-      ? visible.map(timelineItem).join('') + (older.length
-        ? '<li class="timeline-more"><details><summary>途中の経過 ' + older.length + '件を表示</summary><ul class="tl">' + older.map(timelineItem).join('') + '</ul></details></li>'
-        : '')
-      : '<li class="muted">記事が見つかりませんでした。</li>';
+    var n = buildStoryNarrative(s.articleIds, ART);
+    renderLatestUpdate(n);
+    renderStoryline(n);
+    renderEvidence(n);
+
     Array.prototype.forEach.call(document.querySelectorAll('.gantt tbody tr'), function (tr) {
       tr.setAttribute('aria-selected', String(tr.dataset.story === s.id));
     });
     // 選ばれた話題が「動きのない話題」側にあれば、開いて見えるようにする
     var dormantRow = $('gantt-dormant').querySelector('tr[data-story="' + CSS.escape(s.id) + '"]');
     if (dormantRow) $('gantt-dormant-wrap').open = true;
+  }
+
+  /** 層1: 今回の更新。公開日時（実測 rss／代用 delivered）の区別は published() をそのまま使う */
+  function renderLatestUpdate(n) {
+    if (!n) { $('latest-block').innerHTML = ''; return; }
+    var a = n.latest;
+    $('latest-block').innerHTML =
+      '<span class="latest-label">今回の更新</span>' +
+      '<div data-article="' + esc(a.id) + '"' + (isRead(a.id) ? ' class="read"' : '') + '>' +
+      '<span class="latest-date">' + published(a) + (a.sourceName ? '　' + esc(a.sourceName) : '') + '</span>' +
+      '<a class="latest-title" href="' + esc(a.url) + '" target="_blank" rel="noopener" data-read-id="' + esc(a.id) + '">' + esc(a.title) + '</a>' +
+      '<p class="latest-summary">' + esc(a.summary) + '</p></div>';
+  }
+
+  /** 層2: ここまでの経過。初出／前回／今回をラベル付きで並べる（buildStoryNarrative が件数に応じて間引く） */
+  function renderStoryline(n) {
+    if (!n || !n.storyline.length) { $('storyline').innerHTML = ''; return; }
+    $('storyline').innerHTML = n.storyline.map(function (pt) {
+      var a = pt.article;
+      return '<li data-article="' + esc(a.id) + '"' + (isRead(a.id) ? ' class="read"' : '') + '>' +
+        '<span class="sl-label">' + esc(pt.label) + '</span>' +
+        '<span class="sl-date">' + esc(a.date) + '</span>' +
+        '<a class="sl-title" href="' + esc(a.url) + '" target="_blank" rel="noopener" data-read-id="' + esc(a.id) + '">' + esc(a.title) + '</a></li>';
+    }).join('');
+  }
+
+  /** 層3: 根拠記事。全記事へ到達できるが、中間は既存どおり折りたたむ */
+  function renderEvidence(n) {
+    $('evidence-n').textContent = n ? n.total + '件' : '';
+    if (!n) { $('lead-tl').innerHTML = '<li class="muted">記事が見つかりませんでした。</li>'; return; }
+    $('lead-tl').innerHTML = n.evidenceVisible.map(timelineItem).join('') + (n.evidenceCollapsed.length
+      ? '<li class="timeline-more"><details><summary>途中の経過 ' + n.evidenceCollapsed.length + '件を表示</summary><ul class="tl">' + n.evidenceCollapsed.map(timelineItem).join('') + '</ul></details></li>'
+      : '');
   }
 
   function timelineItem(a) {
