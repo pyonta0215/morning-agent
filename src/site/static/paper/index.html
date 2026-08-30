@@ -180,6 +180,10 @@
   .arts .m .src { color: var(--sub); font-weight: 700; margin-right: 8px; }
   .arts li.read { opacity: .58; }
   .arts li.read .h::before { content: "既読"; font-family: var(--gothic); font-size: 9px; color: var(--mute); margin-right: 7px; }
+  .b-solo { background: #eae7e0; color: #6d675f; border: 1px solid var(--line); }
+  .art-story { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 5px; }
+  .art-story-title { font-size: 11px; color: var(--sub); letter-spacing: .04em; }
+  .art-story-note { font-size: 10px; color: var(--mute); letter-spacing: .04em; }
   .article-detail { margin-top: 10px; }
   .article-detail > summary {
     width: max-content; min-height: 40px; margin-left: auto; padding: 7px 10px;
@@ -318,6 +322,8 @@
     .arts .h { font-size: 17px; line-height: 1.55; }
     .arts .s { font-size: 14px; line-height: 1.65; }
     .arts .m { font-size: 12px; line-height: 1.65; letter-spacing: .02em; }
+    .art-story-title { font-size: 12px; }
+    .art-story-note { font-size: 11px; }
     .article-detail { margin-top: 11px; }
     .article-detail > summary { min-height: 48px; padding: 9px 11px; font-size: 14px; }
     .article-detail > summary::before { width: 27px; height: 27px; font-size: 13px; }
@@ -416,6 +422,11 @@
 </div>
 
 <script>
+/** 2つの ISO 日付（YYYY-MM-DD）の日数差。JST 固定で正午基準にし、DST 等の揺れを避ける */
+function dayDiff(a, b) {
+  return Math.round((Date.parse(b + 'T00:00:00+09:00') - Date.parse(a + 'T00:00:00+09:00')) / 864e5);
+}
+
 /**
  * 「今朝の要点」候補を today 動いた話題（新規・続報）から抽出し、決定的に順位付けする。
  * DOM に触れない純粋関数。固定データでのテストは highlights.test.mjs を参照。
@@ -427,10 +438,6 @@
 function selectMorningHighlights(stories, articles, lastDate) {
   var articleById = {};
   articles.forEach(function (a) { articleById[a.id] = a; });
-
-  function dayDiff(a, b) {
-    return Math.round((Date.parse(b + 'T00:00:00+09:00') - Date.parse(a + 'T00:00:00+09:00')) / 864e5);
-  }
 
   var candidates = [];
   stories.forEach(function (s) {
@@ -478,6 +485,47 @@ function selectMorningHighlights(stories, articles, lastDate) {
   });
 
   return candidates.slice(0, 3);
+}
+
+/**
+ * 今日の記事を「新規」「続報」「単発（話題化されていない記事）」へ一度だけ分類する。
+ * DOM に触れない純粋関数。固定データでのテストは today-groups.test.mjs を参照。
+ *
+ * - 新規: 記事が属する話題の firstSeen が今日
+ * - 続報: 上記以外で、記事が属する話題の dates に今日が含まれる
+ * - 単発: どの話題の articleIds にも含まれない記事（ストーリー対象外トピック等）
+ *
+ * 1記事は必ずどれか1グループにのみ入る（story.articleIds に同じ記事が複数話題へ
+ * 重複登録されることは無い前提。念のため最初に見つかった話題だけを採用する）。
+ */
+function classifyTodayArticles(stories, todayArticleIds, lastDate) {
+  var storyByArticle = {};
+  stories.forEach(function (s) {
+    s.articleIds.forEach(function (id) {
+      if (!(id in storyByArticle)) storyByArticle[id] = s;
+    });
+  });
+
+  var groups = { new: [], continued: [], solo: [] };
+  todayArticleIds.forEach(function (id) {
+    var s = storyByArticle[id];
+    if (!s) { groups.solo.push({ id: id }); return; }
+
+    if (s.firstSeen === lastDate) {
+      groups.new.push({ id: id, storyId: s.id, storyTitle: s.title });
+      return;
+    }
+
+    var pastDates = s.dates.filter(function (d) { return d !== lastDate; });
+    groups.continued.push({
+      id: id,
+      storyId: s.id,
+      storyTitle: s.title,
+      dayNumber: s.dates.indexOf(lastDate) + 1,
+      gapDays: pastDates.length ? dayDiff(pastDates[pastDates.length - 1], lastDate) : null
+    });
+  });
+  return groups;
 }
 
 (function () {
@@ -893,6 +941,13 @@ function selectMorningHighlights(stories, articles, lastDate) {
   document.addEventListener('click', function (e) {
     var paneButton = e.target.closest ? e.target.closest('[data-open-pane]') : null;
     if (paneButton) { show(paneButton.dataset.openPane); window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
+    // #32: 状態別サマリーを押したら「今日」画面内の該当グループへ絞らず移動する
+    var todayJump = e.target.closest ? e.target.closest('[data-today-jump]') : null;
+    if (todayJump) {
+      var target = $('today-group-' + todayJump.dataset.todayJump);
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
     var filter = e.target.closest ? e.target.closest('.filter-unread') : null;
     if (filter) {
       unreadOnly = !unreadOnly;
@@ -945,8 +1000,26 @@ function selectMorningHighlights(stories, articles, lastDate) {
     return items.map(function (a, i) { return articleItem(a, Boolean(expandTop && i < 3), true); }).join('');
   }
 
-  function articleItem(a, open, withImportance) {
-      return '<li data-article="' + esc(a.id) + '"' + (isRead(a.id) ? ' class="read"' : '') + '><div class="h">' +
+  var STORY_STATUS_BADGE = { new: 'b-new', continued: 'b-cont', solo: 'b-solo' };
+  var STORY_STATUS_LABEL = { new: '新規', continued: '続報', solo: '単発' };
+
+  /** #32: 今日の記事へ「新規／続報／単発」の状態と所属話題名を付ける（今日画面だけで使う） */
+  function storyMetaLine(meta) {
+    if (!meta) return '';
+    var note = '';
+    if (meta.status === 'continued') {
+      note = meta.dayNumber + '日目';
+      if (meta.gapDays) note += '　前回から' + meta.gapDays + '日ぶり';
+    }
+    return '<div class="art-story"><span class="badge ' + STORY_STATUS_BADGE[meta.status] + '">' +
+      STORY_STATUS_LABEL[meta.status] + '</span>' +
+      (meta.storyTitle ? '<span class="art-story-title">' + esc(meta.storyTitle) + '</span>' : '') +
+      (note ? '<span class="art-story-note">' + esc(note) + '</span>' : '') + '</div>';
+  }
+
+  function articleItem(a, open, withImportance, storyMeta) {
+      return '<li data-article="' + esc(a.id) + '"' + (isRead(a.id) ? ' class="read"' : '') + '>' +
+        storyMetaLine(storyMeta) + '<div class="h">' +
         (isRead(a.id) ? '' : '<span class="unread-dot" aria-label="未読"></span>') + esc(a.title) + '</div>' +
         '<div class="m"><span class="tp">' + esc(TOPIC[a.topic] || a.topic) + '</span>' +
         source(a) + (withImportance ? '重要度 ' + '●'.repeat(a.score) + '○'.repeat(Math.max(0, 5 - a.score)) + '　' : '') +
@@ -956,21 +1029,37 @@ function selectMorningHighlights(stories, articles, lastDate) {
         '" target="_blank" rel="noopener" data-read-id="' + esc(a.id) + '">元記事を開く ↗</a></div></div></details></li>';
   }
 
-  // ── 今日の紙面
+  var TODAY_GROUP_TITLE = { new: '新しく発見した話題', continued: '続報', solo: 'その他の注目' };
+
+  /** #32: 分類済みグループ1件分を記事リストへ（重要度順・未読フィルタ込み。1件目のみ要点を初期展開） */
+  function todayGroupList(items, meta) {
+    var withArticle = items.map(function (it) { return { article: ART[it.id], meta: meta(it) }; })
+      .filter(function (x) { return x.article; })
+      .sort(function (x, y) { return y.article.score - x.article.score; });
+    var visible = unreadOnly ? withArticle.filter(function (x) { return !isRead(x.article.id); }) : withArticle;
+    if (!visible.length) return '<li class="muted">' + (unreadOnly ? '未読の記事はありません。' : '記事がありません。') + '</li>';
+    return visible.map(function (x, i) { return articleItem(x.article, i === 0, true, x.meta); }).join('');
+  }
+
+  function todayGroupSection(key, items) {
+    return '<h2 class="sec" id="today-group-' + key + '">' + TODAY_GROUP_TITLE[key] + ' <small>' + items.length + '件</small></h2>' +
+      '<ul class="arts">' + todayGroupList(items, function (it) {
+        return { status: key, storyTitle: it.storyTitle, dayNumber: it.dayNumber, gapDays: it.gapDays };
+      }) + '</ul>';
+  }
+
+  // ── 今日の紙面（#32: 今日の記事を新規／続報／単発へ一度だけ分類して見せる）
   function renderToday() {
     var d = D.days[D.days.length - 1];
     if (!d) { $('p-today').innerHTML = '<div class="muted">まだありません。</div>'; return; }
-    var created = D.stories.filter(function (s) { return s.firstSeen === D.lastDate; }).length;
-    var continued = D.stories.filter(function (s) { return s.firstSeen !== D.lastDate && s.dates.indexOf(D.lastDate) !== -1; }).length;
-    var ended = D.stories.filter(function (s) { return day(s.lastSeen, D.lastDate) === 8; }).length;
+    var groups = classifyTodayArticles(D.stories, d.articleIds, D.lastDate);
     var summary = '<div class="today-summary" aria-label="今日の変化">' +
-      '<button type="button" data-open-pane="flow">新しく発見<b>' + created + '件</b></button>' +
-      '<button type="button" data-open-pane="flow">続報あり<b>' + continued + '件</b></button>' +
-      '<button type="button" data-open-pane="flow">観測を終了<b>' + ended + '件</b></button></div>';
-    // 記事は重要度順に並ぶ（artList がスコア降順）。「今日の注目」欄は #11 で廃止した
+      '<button type="button" data-today-jump="new">新しく発見<b>' + groups.new.length + '件</b></button>' +
+      '<button type="button" data-today-jump="continued">続報あり<b>' + groups.continued.length + '件</b></button>' +
+      '<button type="button" data-today-jump="solo">その他の注目<b>' + groups.solo.length + '件</b></button></div>';
     $('p-today').innerHTML = '<h2 class="sec">' + jp(d.date) + ' <small>' + d.articleIds.length +
       '件・重要度順</small></h2>' + summary + '<div class="list-tools"><button class="filter-unread" type="button" aria-pressed="' + unreadOnly + '">未読だけ</button></div>' +
-      '<ul class="arts">' + artList(d.articleIds, true) + '</ul>';
+      todayGroupSection('new', groups.new) + todayGroupSection('continued', groups.continued) + todayGroupSection('solo', groups.solo);
   }
 
   // ── アーカイブ（月 → 日 の2段。1年分でも日のボタンが31個で収まる）
