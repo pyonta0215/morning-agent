@@ -121,6 +121,25 @@
   .b-cont { background: #fff; color: var(--accent); border: 1px solid var(--accent); }
   .b-end { background: #eae7e0; color: #6d675f; border: 1px solid var(--line); }
 
+  /* ── 今朝の要点 ── */
+  .highlights { list-style: none; margin: 0 0 24px; padding: 0; }
+  .highlights .highlight { padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .highlights .highlight[data-story] { cursor: pointer; }
+  .highlights .h-title {
+    display: block; font-family: var(--mincho); font-size: 15px; font-weight: 700;
+    line-height: 1.5; margin-top: 3px;
+  }
+  .highlights .highlight.lead { padding-top: 2px; }
+  .highlights .highlight.lead .h-title { font-size: clamp(19px, 2.6vw, 24px); line-height: 1.4; margin-top: 7px; }
+  .highlights .h-summary { font-size: 12.5px; color: var(--sub); line-height: 1.7; margin: 7px 0 0; }
+  .highlights .h-meta {
+    font-size: 11px; color: var(--sub); letter-spacing: .06em; display: flex; gap: 16px;
+    flex-wrap: wrap; margin-top: 7px;
+  }
+  .highlights .h-meta b { color: var(--accent); }
+  .highlights-empty { font-size: 12.5px; color: var(--mute); padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .story-detail { margin-top: 2px; }
+
   /* ── 経過表 ── */
   .gantt { width: 100%; border-collapse: collapse; table-layout: fixed; }
   .gantt th {
@@ -254,7 +273,6 @@
     h2.sec { margin-top: 22px; font-size: 14px; letter-spacing: .16em; align-items: center; }
     h2.sec small { margin-left: auto; text-align: right; }
     .front { display: flex; flex-direction: column; margin-top: 13px; }
-    .front > .side { order: -1; margin-top: 0; margin-bottom: 24px; }
     .lead-title { font-size: 23px; }
     .lead-meta { gap: 5px 13px; font-size: 12px; }
     .tl { padding-left: 13px; }
@@ -271,6 +289,18 @@
     .moved b { font-size: 16px; }
     .moved .note { display: block; margin-top: 3px; font-size: 12px; }
     .badge { font-size: 10px; }
+
+    .highlights { margin-bottom: 20px; }
+    .highlights .highlight { position: relative; min-height: 54px; padding: 12px 26px 12px 0; }
+    .highlights .highlight[data-story]::after {
+      content: "›"; position: absolute; right: 2px; top: 18px; color: var(--mute); font-size: 21px;
+    }
+    .highlights .highlight.lead[data-story]::after { top: 50%; transform: translateY(-50%); }
+    .highlights .h-title { font-size: 16px; }
+    .highlights .highlight.lead .h-title { font-size: 21px; }
+    .highlights .h-summary { font-size: 14px; line-height: 1.65; }
+    .highlights .h-meta { font-size: 12px; }
+    .highlights-empty { font-size: 13px; }
 
     .gantt { display: block; }
     .gantt colgroup, .gantt thead { display: none; }
@@ -333,10 +363,15 @@
   <section id="p-flow">
     <div class="front">
       <div>
-        <span class="kicker" id="kicker">いま続いている最長の流れ</span>
-        <h3 class="lead-title" id="lead-title"></h3>
-        <div class="lead-meta" id="lead-meta"></div>
-        <ul class="tl" id="lead-tl"></ul>
+        <h2 class="sec" style="margin-top:0">今朝の要点</h2>
+        <ul class="highlights" id="highlights"></ul>
+
+        <div class="story-detail">
+          <span class="kicker" id="kicker"></span>
+          <h3 class="lead-title" id="lead-title"></h3>
+          <div class="lead-meta" id="lead-meta"></div>
+          <ul class="tl" id="lead-tl"></ul>
+        </div>
       </div>
       <div class="side">
         <h2 class="sec" style="margin-top:0">きょう動いた話題 <small id="moved-n"></small></h2>
@@ -381,6 +416,70 @@
 </div>
 
 <script>
+/**
+ * 「今朝の要点」候補を today 動いた話題（新規・続報）から抽出し、決定的に順位付けする。
+ * DOM に触れない純粋関数。固定データでのテストは highlights.test.mjs を参照。
+ *
+ * 順位は Issue #31 が指定する4要素をこの優先順位でチェーン比較する:
+ * 当日の記事重要度 → 複数ソース → 既存話題の再始動間隔 → 記事数。
+ * 全て同点の場合だけ id 昇順で決める（結果を一意にするための最終手段）。
+ */
+function selectMorningHighlights(stories, articles, lastDate) {
+  var articleById = {};
+  articles.forEach(function (a) { articleById[a.id] = a; });
+
+  function dayDiff(a, b) {
+    return Math.round((Date.parse(b + 'T00:00:00+09:00') - Date.parse(a + 'T00:00:00+09:00')) / 864e5);
+  }
+
+  var candidates = [];
+  stories.forEach(function (s) {
+    var isNew = s.firstSeen === lastDate;
+    var isContinued = !isNew && s.dates.indexOf(lastDate) !== -1;
+    if (!isNew && !isContinued) return;
+
+    var todayArticles = s.articleIds
+      .map(function (id) { return articleById[id]; })
+      .filter(function (a) { return a && a.date === lastDate; });
+    if (!todayArticles.length) return;
+
+    var todayScore = todayArticles.reduce(function (max, a) { return Math.max(max, a.score); }, 0);
+    var sources = {};
+    todayArticles.forEach(function (a) { if (a.sourceName) sources[a.sourceName] = true; });
+    var multiSource = Object.keys(sources).length >= 2;
+
+    var reactivationGapDays = 0;
+    if (isContinued) {
+      var pastDates = s.dates.filter(function (d) { return d !== lastDate; });
+      if (pastDates.length) reactivationGapDays = dayDiff(pastDates[pastDates.length - 1], lastDate);
+    }
+
+    var lead = todayArticles.slice().sort(function (a, b) { return b.score - a.score; })[0];
+
+    candidates.push({
+      id: s.id,
+      title: s.title,
+      topic: s.topic,
+      status: isNew ? '新規' : '続報',
+      todayScore: todayScore,
+      multiSource: multiSource,
+      reactivationGapDays: reactivationGapDays,
+      count: s.count,
+      summary: lead ? lead.summary : ''
+    });
+  });
+
+  candidates.sort(function (a, b) {
+    if (a.todayScore !== b.todayScore) return b.todayScore - a.todayScore;
+    if (a.multiSource !== b.multiSource) return (b.multiSource ? 1 : 0) - (a.multiSource ? 1 : 0);
+    if (a.reactivationGapDays !== b.reactivationGapDays) return b.reactivationGapDays - a.reactivationGapDays;
+    if (a.count !== b.count) return b.count - a.count;
+    return a.id < b.id ? -1 : (a.id > b.id ? 1 : 0);
+  });
+
+  return candidates.slice(0, 3);
+}
+
 (function () {
   var $ = function (id) { return document.getElementById(id); };
   var esc = function (s) {
@@ -666,11 +765,14 @@
 
   // ── 流れ
   function renderFlow() {
-    // 一面: 直近1週間に動きがあって、いちばん長く続いている話題
-    var cands = D.stories.filter(function (s) { return s.live && s.count >= 3; });
-    var lead = cands.sort(function (a, b) { return b.spanDays - a.spanDays; })[0] ||
-      D.stories.slice().sort(function (a, b) { return b.count - a.count; })[0];
-    if (lead) showStory(lead, 'いま続いている最長の流れ');
+    // 一面先頭: きょう動いた話題から決定的に選んだ「今朝の要点」最大3件（#31）
+    var highlights = selectMorningHighlights(D.stories, D.articles, D.lastDate);
+    renderHighlights(highlights);
+
+    var storyById = {};
+    D.stories.forEach(function (s) { storyById[s.id] = s; });
+    var initial = highlights.length ? storyById[highlights[0].id] : fallbackLeadStory();
+    if (initial) showStory(initial, highlights.length ? '今朝の要点でいちばん動いた話題' : 'いま続いている最長の流れ');
 
     var last = D.lastDate;
     var moved = [];
@@ -724,6 +826,36 @@
   }
   function storyHasUnread(s) {
     return s.articleIds.some(function (id) { return ART[id] && !isRead(id); });
+  }
+
+  /** きょう動いた話題が無い日に見せる代わり: 直近でいちばん長く続いている話題 */
+  function fallbackLeadStory() {
+    var cands = D.stories.filter(function (s) { return s.live && s.count >= 3; });
+    return cands.sort(function (a, b) { return b.spanDays - a.spanDays; })[0] ||
+      D.stories.slice().sort(function (a, b) { return b.count - a.count; })[0];
+  }
+
+  /** 今朝の要点: 1件目は状態＋見出し＋今回追加分の要約1文＋分野＋根拠記事数、2・3件目は状態＋見出しのみ */
+  function renderHighlights(highlights) {
+    if (!highlights.length) {
+      $('highlights').innerHTML = '<li class="highlights-empty">' +
+        'きょうは新しく動いた話題がありませんでした。下に直近でいちばん長く続いている話題を出します。</li>';
+      return;
+    }
+    $('highlights').innerHTML = highlights.map(function (h, i) {
+      var badgeClass = h.status === '新規' ? 'b-new' : 'b-cont';
+      if (i === 0) {
+        return '<li class="highlight lead" data-story="' + esc(h.id) + '" role="button" tabindex="0">' +
+          '<span class="badge ' + badgeClass + '">' + h.status + '</span>' +
+          '<b class="h-title">' + esc(h.title) + '</b>' +
+          (h.summary ? '<p class="h-summary">' + esc(h.summary) + '</p>' : '') +
+          '<div class="h-meta"><span>' + esc(TOPIC[h.topic] || h.topic) + '</span>' +
+          '<span>根拠記事 <b>' + h.count + '件</b></span></div></li>';
+      }
+      return '<li class="highlight" data-story="' + esc(h.id) + '" role="button" tabindex="0">' +
+        '<span class="badge ' + badgeClass + '">' + h.status + '</span>' +
+        '<b class="h-title">' + esc(h.title) + '</b></li>';
+    }).join('');
   }
 
   /** 話題を一面に出す */
