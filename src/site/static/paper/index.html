@@ -268,18 +268,26 @@
   .monthbar button { font-family: var(--mincho); font-size: 12.5px; letter-spacing: .08em; padding: 5px 13px; }
   .monthbar button[aria-selected="true"] { background: var(--accent); border-color: var(--accent); }
 
-  /* ── 地形 ── */
-  .terrain { width: 100%; overflow-x: auto; }
-  .terrain table { border-collapse: collapse; font-size: 11px; width: 100%; table-layout: fixed; min-width: 520px; }
-  .terrain col.lbl { width: 116px; }
-  .terrain th {
-    font-weight: 400; color: var(--sub); padding: 3px 9px 3px 0;
-    text-align: right; white-space: nowrap; font-family: var(--mincho);
+  /* ── 分野の動向（#35） ── */
+  .field-sort { display: flex; gap: 8px; margin: 14px 0 4px; }
+  .field-sort button {
+    min-height: 36px; padding: 6px 13px; border: 1px solid var(--line); background: #fff;
+    color: var(--sub); font: 12px var(--gothic); cursor: pointer;
   }
-  .terrain th.wk { text-align: center; font-size: 9px; letter-spacing: 0; color: var(--mute); font-family: var(--gothic); padding: 0 0 4px; }
-  .terrain td { height: 26px; padding: 0; border: 2px solid var(--paper); }
-  .legend { display: flex; align-items: center; gap: 7px; font-size: 10.5px; color: var(--mute); margin-top: 12px; }
-  .legend i { display: inline-block; width: 22px; height: 12px; }
+  .field-sort button[aria-pressed="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .fields { list-style: none; margin: 0; padding: 0; }
+  .fields .field { padding: 12px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
+  .field-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+  .field-label { font-family: var(--mincho); font-size: 14.5px; font-weight: 700; }
+  .field-trend { font-size: 12px; font-weight: 700; letter-spacing: .02em; white-space: nowrap; }
+  .field-trend.trend-up { color: var(--accent); }
+  .field-trend.trend-down { color: var(--sub); }
+  .field-trend.trend-flat { color: var(--mute); }
+  .field-numbers { font-size: 11px; color: var(--sub); letter-spacing: .04em; margin-top: 4px; }
+  .field-numbers b { color: var(--ink); }
+  .sparkline { display: flex; align-items: flex-end; gap: 3px; height: 26px; margin-top: 9px; }
+  .spark-bar { display: inline-block; width: 9px; background: #c2bab0; }
+  .spark-bar.spark-now { background: var(--accent); }
 
   .muted { font-size: 12.5px; color: var(--mute); padding: 18px 0; }
   .err { font-size: 13px; color: var(--accent); padding: 24px 0; }
@@ -309,9 +317,10 @@
     .tabs button[data-tab="today"] { order: 1; }
     .tabs button[data-tab="flow"] { order: 2; }
     .tabs button[data-tab="archive"] { order: 3; }
-    .tabs button[data-tab="terrain"] { display: none; }
+    /* #35: 「動向」は流れ最下部までスクロールしないと出てこなかった導線をやめ、下部ナビへ出す */
+    .tabs button[data-tab="terrain"] { order: 4; }
     .tabs .search { display: none; }
-    .tabs .search-tab { display: block; order: 4; }
+    .tabs .search-tab { display: block; order: 5; }
 
     h2.sec { margin-top: 22px; font-size: 14px; letter-spacing: .16em; align-items: center; }
     h2.sec small { margin-left: auto; text-align: right; }
@@ -386,7 +395,11 @@
     .daybar { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 5px; scrollbar-width: none; }
     .daybar::-webkit-scrollbar { display: none; }
     .daybar button { flex: 0 0 auto; min-height: 44px; padding: 8px 13px; font-size: 13px; }
-    .terrain { margin-left: -17px; width: calc(100% + 34px); padding: 0 17px; }
+    /* #35: 縦リストのため横スクロールは元々不要。タップ領域だけ広げる */
+    .fields .field { min-height: 44px; padding: 14px 0; }
+    .field-sort button { min-height: 44px; }
+    .field-label { font-size: 16px; }
+    .field-numbers { font-size: 12px; }
     .subnav-action { display: block; width: 100%; min-height: 48px; margin-top: 14px; border: 1px solid var(--line); background: #fff; color: var(--sub); font: 13px var(--gothic); }
     #p-search .search-mobile { position: sticky; top: 0; z-index: 5; padding: 10px 0; background: var(--paper); }
     #p-search input { width: 100%; min-height: 48px; padding: 10px 13px; border: 1px solid var(--ink); background: #fff; color: var(--ink); font-size: 16px; }
@@ -409,7 +422,7 @@
     <button role="tab" data-tab="flow" aria-selected="true">流れ</button>
     <button role="tab" data-tab="today" aria-selected="false">今日</button>
     <button role="tab" data-tab="archive" aria-selected="false">過去</button>
-    <button role="tab" data-tab="terrain" aria-selected="false">地形</button>
+    <button role="tab" data-tab="terrain" aria-selected="false">動向</button>
     <span class="search"><input id="q" type="search" placeholder="全文検索（見出し・要約）" autocomplete="off"></span>
     <button role="tab" class="search-tab" data-tab="search" aria-selected="false">検索</button>
   </div>
@@ -457,7 +470,7 @@
         <tbody id="gantt-dormant"></tbody>
       </table>
     </details>
-    <button class="subnav-action" type="button" data-open-pane="terrain">分野ごとの地形を見る</button>
+    <button class="subnav-action" type="button" data-open-pane="terrain">分野の動向を見る</button>
   </section>
 
   <!-- 今日の紙面 -->
@@ -471,10 +484,15 @@
     <div id="archive-body"></div>
   </section>
 
-  <!-- 地形 -->
+  <!-- 分野の動向 -->
   <section id="p-terrain" hidden>
-    <h2 class="sec">地形 <small>分野 × 週ごとの記事数</small></h2>
-    <div class="terrain" id="terrain"></div>
+    <h2 class="sec">分野の動向 <small>直近8週・前週比</small></h2>
+    <div class="field-sort" id="field-sort" role="group" aria-label="並び替え">
+      <button type="button" data-sort="delta" aria-pressed="true">増加順</button>
+      <button type="button" data-sort="thisWeek" aria-pressed="false">今週件数順</button>
+    </div>
+    <ul class="fields" id="fields"></ul>
+    <div id="field-articles"></div>
   </section>
 
   <!-- 検索結果 -->
@@ -626,6 +644,65 @@ function buildStoryNarrative(articleIds, articleById) {
     evidenceCollapsed: evidenceCollapsed,
     total: items.length
   };
+}
+
+/** 指定日を含む週の日曜日（JST）を ISO 日付で返す */
+function weekStart(iso) {
+  var d = new Date(iso + 'T12:00:00+09:00');
+  d.setDate(d.getDate() - d.getDay());
+  return d.toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' });
+}
+
+/**
+ * 分野（トピック）ごとに直近 weekCount 週の記事数・前週比・トレンド記号を組み立てる。
+ * DOM に触れない純粋関数。固定データでのテストは field-trends.test.mjs を参照。
+ *
+ * 週は日曜始まり（weekStart）。lastDate を含む週を最新週とし、そこから遡って weekCount 週ぶんを
+ * 古い→新しい順で並べる。範囲外の日は無視するので、観測期間が weekCount 週に満たない「初週」でも
+ * 単に古い週が0件のまま並ぶだけで壊れない。
+ */
+function buildFieldTrends(days, articles, topics, lastDate, weekCount) {
+  weekCount = weekCount || 8;
+  var articleById = {};
+  articles.forEach(function (a) { articleById[a.id] = a; });
+
+  var lastWeekStart = weekStart(lastDate);
+  var weeks = [];
+  for (var i = weekCount - 1; i >= 0; i--) {
+    var d = new Date(lastWeekStart + 'T12:00:00+09:00');
+    d.setDate(d.getDate() - i * 7);
+    weeks.push(d.toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' }));
+  }
+  var weekIndex = {};
+  weeks.forEach(function (w, i) { weekIndex[w] = i; });
+
+  var counts = {};
+  topics.forEach(function (t) { counts[t.id] = weeks.map(function () { return 0; }); });
+  days.forEach(function (day) {
+    var wi = weekIndex[weekStart(day.date)];
+    if (wi === undefined) return;
+    day.articleIds.forEach(function (id) {
+      var a = articleById[id];
+      if (a && counts[a.topic]) counts[a.topic][wi]++;
+    });
+  });
+
+  return topics.map(function (t) {
+    var weeklyCounts = counts[t.id];
+    var thisWeek = weeklyCounts[weeklyCounts.length - 1];
+    var lastWeek = weeklyCounts.length >= 2 ? weeklyCounts[weeklyCounts.length - 2] : 0;
+    var delta = thisWeek - lastWeek;
+    return {
+      topicId: t.id,
+      topicLabel: t.label,
+      weeklyCounts: weeklyCounts,
+      weekStarts: weeks,
+      thisWeek: thisWeek,
+      lastWeek: lastWeek,
+      delta: delta,
+      trend: delta > 0 ? 'up' : (delta < 0 ? 'down' : 'flat')
+    };
+  });
 }
 
 (function () {
@@ -1093,8 +1170,21 @@ function buildStoryNarrative(articleIds, articleById) {
       else renderToday();
       return;
     }
+    // #35: 分野の動向の並び替え
+    var sortBtn = e.target.closest ? e.target.closest('[data-sort]') : null;
+    if (sortBtn) {
+      fieldSort = sortBtn.dataset.sort;
+      Array.prototype.forEach.call(document.querySelectorAll('[data-sort]'), function (b) {
+        b.setAttribute('aria-pressed', String(b === sortBtn));
+      });
+      renderFields(buildFieldTrends(D.days, D.articles, D.topics, D.lastDate, 8));
+      return;
+    }
     var articleLink = e.target.closest ? e.target.closest('[data-read-id]') : null;
     if (articleLink) markRead(articleLink.dataset.readId);
+    // #35: 分野を選ぶと、同一画面内にその分野の直近記事を出す
+    var fieldEl = e.target.closest ? e.target.closest('[data-topic]') : null;
+    if (fieldEl) { renderFieldArticles(fieldEl.dataset.topic); return; }
     var el = e.target.closest ? e.target.closest('[data-story]') : null;
     if (!el || !D) return;
     var s = D.stories.filter(function (x) { return x.id === el.dataset.story; })[0];
@@ -1107,7 +1197,7 @@ function buildStoryNarrative(articleIds, articleById) {
   });
   document.addEventListener('keydown', function (e) {
     if (e.key !== 'Enter' && e.key !== ' ') return;
-    var el = e.target.closest ? e.target.closest('[data-story]') : null;
+    var el = e.target.closest ? e.target.closest('[data-story], [data-topic]') : null;
     if (!el) return;
     e.preventDefault(); el.click();
   });
@@ -1267,50 +1357,48 @@ function buildStoryNarrative(articleIds, articleById) {
       '<ul class="arts">' + artList(d.articleIds, false) + '</ul>';
   }
 
-  // ── 地形（分野 × 週）
+  // ── 分野の動向（#35: 直近8週の週次件数・前週比・8週スパークライン）
+  var fieldSort = 'delta';
+
   function renderTerrain() {
-    var weeks = [], index = {};
-    D.days.forEach(function (d) {
-      var w = weekStart(d.date);
-      if (!(w in index)) { index[w] = weeks.length; weeks.push(w); }
-    });
-    var grid = {};
-    D.topics.forEach(function (t) { grid[t.id] = weeks.map(function () { return 0; }); });
-    D.days.forEach(function (d) {
-      var wi = index[weekStart(d.date)];
-      d.articleIds.forEach(function (id) {
-        var a = ART[id];
-        if (a && grid[a.topic]) grid[a.topic][wi]++;
-      });
+    renderFields(buildFieldTrends(D.days, D.articles, D.topics, D.lastDate, 8));
+    $('field-articles').innerHTML = '';
+  }
+
+  function renderFields(trends) {
+    var sorted = trends.slice().sort(function (a, b) {
+      return fieldSort === 'thisWeek' ? b.thisWeek - a.thisWeek : b.delta - a.delta;
     });
     var max = 1;
-    Object.keys(grid).forEach(function (k) {
-      grid[k].forEach(function (v) { if (v > max) max = v; });
-    });
-
-    // 週が増えても列だけ増えて縦は伸びない。1年で52列
-    var cols = '<colgroup><col class="lbl">' + weeks.map(function () { return '<col>'; }).join('') + '</colgroup>';
-    var head = '<tr><th></th>' + weeks.map(function (w) {
-      return '<th class="wk">' + md(w) + '</th>';
-    }).join('') + '</tr>';
-    var body = D.topics.map(function (t) {
-      return '<tr><th>' + esc(t.label) + '</th>' + grid[t.id].map(function (v, i) {
-        var o = v === 0 ? 0.04 : 0.12 + 0.88 * (v / max);
-        return '<td style="background:rgba(168,26,18,' + o.toFixed(2) + ')" title="' + esc(t.label) +
-          '　' + weeks[i] + 'の週　' + v + '件"></td>';
-      }).join('') + '</tr>';
-    }).join('');
-    var steps = [0, 0.25, 0.5, 0.75, 1].map(function (r) {
-      var o = r === 0 ? 0.04 : 0.12 + 0.88 * r;
-      return '<i style="background:rgba(168,26,18,' + o.toFixed(2) + ')"></i>';
-    }).join('');
-    $('terrain').innerHTML = '<table>' + cols + head + body + '</table>' +
-      '<div class="legend">少ない ' + steps + ' 多い　（最大 ' + max + '件/週）</div>';
+    trends.forEach(function (t) { t.weeklyCounts.forEach(function (v) { if (v > max) max = v; }); });
+    $('fields').innerHTML = sorted.map(function (t) { return fieldItem(t, max); }).join('');
   }
-  function weekStart(iso) {
-    var d = new Date(iso + 'T12:00:00+09:00');
-    d.setDate(d.getDate() - d.getDay());
-    return d.toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' });
+
+  function fieldItem(t, max) {
+    var arrow = t.trend === 'up' ? '↑' : (t.trend === 'down' ? '↓' : '→');
+    var deltaLabel = t.delta > 0 ? '+' + t.delta : String(t.delta);
+    var bars = t.weeklyCounts.map(function (v, i) {
+      var h = Math.max(2, Math.round(24 * v / max));
+      var isNow = i === t.weeklyCounts.length - 1;
+      return '<span class="spark-bar' + (isNow ? ' spark-now' : '') + '" style="height:' + h + 'px" ' +
+        'title="' + esc(t.weekStarts[i]) + 'の週　' + v + '件"></span>';
+    }).join('');
+    return '<li class="field" data-topic="' + esc(t.topicId) + '" role="button" tabindex="0">' +
+      '<div class="field-head"><span class="field-label">' + esc(t.topicLabel) + '</span>' +
+      '<span class="field-trend trend-' + t.trend + '">' + arrow + ' ' + deltaLabel + '</span></div>' +
+      '<div class="field-numbers">今週 <b>' + t.thisWeek + '件</b>　前週 ' + t.lastWeek + '件</div>' +
+      '<div class="sparkline">' + bars + '</div></li>';
+  }
+
+  /** 分野選択後の対象記事を同一画面（地形タブ）内に出す（#35） */
+  function renderFieldArticles(topicId) {
+    var ids = D.articles.filter(function (a) { return a.topic === topicId; })
+      .sort(function (a, b) { return a.date < b.date ? 1 : -1; })
+      .slice(0, 10)
+      .map(function (a) { return a.id; });
+    $('field-articles').innerHTML = '<h2 class="sec">' + esc(TOPIC[topicId] || topicId) + 'の直近記事 <small>' + ids.length + '件</small></h2>' +
+      '<ul class="arts">' + artList(ids, false) + '</ul>';
+    $('field-articles').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   // ── 全文検索
