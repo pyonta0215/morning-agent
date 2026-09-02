@@ -15,6 +15,8 @@ var PUBLIC_PATHS = [
   /^\/paper\/index\.html$/,
   /^\/paper\/manifest\.webmanifest$/,
   /^\/paper\/icon\.svg$/,
+  /^\/paper\/favicon-32\.png$/,
+  /^\/paper\/icon-192\.png$/,
   /^\/paper\/icon-512\.png$/,
   /^\/paper\/apple-touch-icon\.png$/,
 ];
