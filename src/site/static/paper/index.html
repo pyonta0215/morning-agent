@@ -1004,9 +1004,32 @@ function buildSearchResult(articles, stories, query, filters) {
     });
   }
 
-  function exchangeCode(config, code) {
-    var verifier = sessionStorage.getItem(VERIFIER_KEY);
-    if (!verifier) return Promise.reject(new Error('PKCE verifier is missing'));
+  // OAuth の返却値を取り出し、同時に URL から消す。
+  //
+  // 消すのは**交換を試みる前**。交換の完了を待たずにタブを閉じると、ブラウザの
+  // 「閉じたタブを開く」機能がこの URL と sessionStorage をまとめて復元し、
+  // 使用済み code で交換を再試行して失敗する。成功後にしか消していないと、
+  // 手動リロードでも同じ dead code を使い続けてエラーがループする。
+  function takeOAuthCallback() {
+    var names = ['code', 'state', 'error', 'error_description', 'error_uri'];
+    var url = new URL(window.location.href);
+    var result = {
+      code: url.searchParams.get('code'),
+      state: url.searchParams.get('state'),
+      error: url.searchParams.get('error')
+    };
+    var present = names.some(function (name) { return url.searchParams.has(name); });
+    if (present) {
+      names.forEach(function (name) { url.searchParams.delete(name); });
+      var query = url.searchParams.toString();
+      try {
+        window.history.replaceState(null, '', url.pathname + (query ? '?' + query : '') + url.hash);
+      } catch (_) { /* 非致命 */ }
+    }
+    return result;
+  }
+
+  function exchangeCode(config, code, verifier) {
     return tokenRequest(config, {
       grant_type: 'authorization_code',
       client_id: config.clientId,
@@ -1015,11 +1038,17 @@ function buildSearchResult(articles, stories, query, filters) {
       code_verifier: verifier
     }).then(function (json) {
       saveTokenResponse(json);
-      sessionStorage.removeItem(VERIFIER_KEY);
-      sessionStorage.removeItem(STATE_KEY);
-      try { window.history.replaceState(null, '', window.location.pathname); } catch (_) { /* 非致命 */ }
       return loadTokens().access_token;
     });
+  }
+
+  function existingOrRefresh(config) {
+    var tokens = loadTokens();
+    if (tokens && tokens.access_token && tokens.expires_at > Date.now()) {
+      return Promise.resolve(tokens.access_token);
+    }
+    if (tokens && tokens.refresh_token) return refresh(config, tokens.refresh_token);
+    return Promise.resolve(null);
   }
 
   function refresh(config, refreshToken) {
@@ -1037,30 +1066,32 @@ function buildSearchResult(articles, stories, query, filters) {
   }
 
   function ensureAuthenticated(config) {
-    var url = new URL(window.location.href);
-    if (url.searchParams.get('error')) {
-      try { window.history.replaceState(null, '', window.location.pathname); } catch (_) { /* 非致命 */ }
-      return Promise.reject(new Error('Cognito login was cancelled or failed'));
-    }
-    var code = url.searchParams.get('code');
-    if (code) {
-      var expected = sessionStorage.getItem(STATE_KEY);
-      if (!expected || expected !== url.searchParams.get('state')) {
-        return Promise.reject(new Error('OAuth state mismatch'));
-      }
-      return exchangeCode(config, code);
-    }
-
-    var tokens = loadTokens();
-    if (tokens && tokens.access_token && tokens.expires_at > Date.now()) {
-      return Promise.resolve(tokens.access_token);
-    }
-    if (tokens && tokens.refresh_token) {
-      return refresh(config, tokens.refresh_token).then(function (token) {
+    var callback = takeOAuthCallback();
+    var expected = sessionStorage.getItem(STATE_KEY);
+    var verifier = sessionStorage.getItem(VERIFIER_KEY);
+    var fallback = function () {
+      return existingOrRefresh(config).then(function (token) {
         return token || startLogin(config);
       });
+    };
+
+    if (callback.code && expected && verifier && expected === callback.state) {
+      sessionStorage.removeItem(VERIFIER_KEY);
+      sessionStorage.removeItem(STATE_KEY);
+      // code が使用済み・期限切れでも画面を壊さない。既存トークンの確認・
+      // 再ログインへ落とす。
+      return exchangeCode(config, callback.code, verifier).catch(fallback);
     }
-    return startLogin(config);
+
+    if (callback.code || callback.error) {
+      // state 不一致、PKCE の控えが無い重複コールバック(ログイン済みタブで
+      // ブラウザバックすると、有効な Managed Login cookie のせいで新しい
+      // code が自動発行されて戻ってくる)、ログインの取り消し。どれも致命的
+      // ではないので、使い切った控えを掃除して既存トークンの確認へ落とす。
+      sessionStorage.removeItem(VERIFIER_KEY);
+      sessionStorage.removeItem(STATE_KEY);
+    }
+    return fallback();
   }
 
   $('logout').addEventListener('click', function () {
