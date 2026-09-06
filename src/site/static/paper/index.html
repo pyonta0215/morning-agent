@@ -601,7 +601,8 @@
   </section>
 </div>
 
-<script>
+<script type="module">
+import { createAuthClient, isSignedOut, isTransient } from './vendor/imai-auth-browser.js';
 /** 2つの ISO 日付（YYYY-MM-DD）の日数差。JST 固定で正午基準にし、DST 等の揺れを避ける */
 function dayDiff(a, b) {
   return Math.round((Date.parse(b + 'T00:00:00+09:00') - Date.parse(a + 'T00:00:00+09:00')) / 864e5);
@@ -906,7 +907,6 @@ function buildSearchResult(articles, stories, query, filters) {
     });
   };
   var D = null, ART = null, TOPIC = null;
-  var AUTH_CONFIG = null;
   var READ_KEY = 'morning-agent.paper.read';
   var VIEW_KEY = 'morning-agent.paper.view';
   var unreadOnly = false;
@@ -930,190 +930,47 @@ function buildSearchResult(articles, stories, query, filters) {
     });
   }
 
-  // Cognito Hosted UI（Authorization Code + PKCE）。パスワードも署名検証もこの画面では扱わない。
-  var TOKEN_KEY = 'morning-agent.paper.tokens';
-  var VERIFIER_KEY = 'morning-agent.paper.pkce.verifier';
-  var STATE_KEY = 'morning-agent.paper.pkce.state';
-
-  function base64Url(bytes) {
-    var str = '';
-    var arr = new Uint8Array(bytes);
-    for (var i = 0; i < arr.length; i++) str += String.fromCharCode(arr[i]);
-    return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-  }
-
-  function randomString(length) {
-    var bytes = new Uint8Array(length);
-    crypto.getRandomValues(bytes);
-    return base64Url(bytes.buffer);
-  }
-
-  function challenge(verifier) {
-    return crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)).then(base64Url);
-  }
-
-  function loadTokens() {
-    var raw = sessionStorage.getItem(TOKEN_KEY);
-    if (!raw) return null;
-    try { return JSON.parse(raw); } catch (_) { return null; }
-  }
-
-  function clearTokens() {
-    sessionStorage.removeItem(TOKEN_KEY);
-  }
-
-  function saveTokenResponse(json) {
-    if (!json.access_token || !json.expires_in) throw new Error('token response is incomplete');
-    var old = loadTokens();
-    sessionStorage.setItem(TOKEN_KEY, JSON.stringify({
-      access_token: json.access_token,
-      refresh_token: json.refresh_token || (old && old.refresh_token),
-      // 期限直前のリクエストを避けるため30秒早めに更新する
-      expires_at: Date.now() + (json.expires_in - 30) * 1000
-    }));
-  }
-
-  function tokenRequest(config, body) {
-    return fetch(config.cognitoDomain + '/oauth2/token', {
-      method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams(body)
-    }).then(function (r) {
-      if (!r.ok) throw new Error('token endpoint returned ' + r.status);
-      return r.json();
-    });
-  }
-
-  function startLogin(config) {
-    var verifier = randomString(64);
-    var state = randomString(16);
-    sessionStorage.setItem(VERIFIER_KEY, verifier);
-    sessionStorage.setItem(STATE_KEY, state);
-    return challenge(verifier).then(function (codeChallenge) {
-      var params = new URLSearchParams({
-        response_type: 'code',
-        client_id: config.clientId,
-        redirect_uri: config.redirectUri,
-        scope: config.scopes,
-        state: state,
-        code_challenge: codeChallenge,
-        code_challenge_method: 'S256'
-      });
-      window.location.assign(config.cognitoDomain + '/oauth2/authorize?' + params.toString());
-      return null;
-    });
-  }
-
-  // OAuth の返却値を取り出し、同時に URL から消す。
+  // 認証は imai-auth の共有クライアントへ委譲する（vendor/imai-auth-browser.js）。
+  // PKCE・token保管・更新・logoutをこの画面で書かない。
   //
-  // 消すのは**交換を試みる前**。交換の完了を待たずにタブを閉じると、ブラウザの
-  // 「閉じたタブを開く」機能がこの URL と sessionStorage をまとめて復元し、
-  // 使用済み code で交換を再試行して失敗する。成功後にしか消していないと、
-  // 手動リロードでも同じ dead code を使い続けてエラーがループする。
-  function takeOAuthCallback() {
-    var names = ['code', 'state', 'error', 'error_description', 'error_uri'];
-    var url = new URL(window.location.href);
-    var result = {
-      code: url.searchParams.get('code'),
-      state: url.searchParams.get('state'),
-      error: url.searchParams.get('error')
-    };
-    var present = names.some(function (name) { return url.searchParams.has(name); });
-    if (present) {
-      names.forEach(function (name) { url.searchParams.delete(name); });
-      var query = url.searchParams.toString();
-      try {
-        window.history.replaceState(null, '', url.pathname + (query ? '?' + query : '') + url.hash);
-      } catch (_) { /* 非致命 */ }
-    }
-    return result;
-  }
+  // 以前はRefresh TokenをここでsessionStorageに置いていたため、PWAを終了すると
+  // 更新すべきtoken自体が消え、開くたびにHosted UIへ飛んでいた。共有クライアント
+  // はIndexedDBへ永続化するので、再起動してもログイン状態が続く。
+  var auth = null;
 
-  function exchangeCode(config, code, verifier) {
-    return tokenRequest(config, {
-      grant_type: 'authorization_code',
-      client_id: config.clientId,
-      code: code,
-      redirect_uri: config.redirectUri,
-      code_verifier: verifier
-    }).then(function (json) {
-      saveTokenResponse(json);
-      return loadTokens().access_token;
+  function initAuth(config) {
+    auth = createAuthClient({
+      clientId: config.clientId,
+      redirectUri: config.redirectUri,
+      scopes: config.scopes,
+      authDomain: config.cognitoDomain,
+      storageNamespace: 'morning-agent-paper'
     });
+    return auth;
   }
 
-  function existingOrRefresh(config) {
-    var tokens = loadTokens();
-    if (tokens && tokens.access_token && tokens.expires_at > Date.now()) {
-      return Promise.resolve(tokens.access_token);
-    }
-    if (tokens && tokens.refresh_token) return refresh(config, tokens.refresh_token);
-    return Promise.resolve(null);
-  }
-
-  function refresh(config, refreshToken) {
-    return tokenRequest(config, {
-      grant_type: 'refresh_token',
-      client_id: config.clientId,
-      refresh_token: refreshToken
-    }).then(function (json) {
-      saveTokenResponse(json);
-      return loadTokens().access_token;
-    }).catch(function () {
-      clearTokens();
-      return null;
-    });
-  }
-
-  function ensureAuthenticated(config) {
-    var callback = takeOAuthCallback();
-    var expected = sessionStorage.getItem(STATE_KEY);
-    var verifier = sessionStorage.getItem(VERIFIER_KEY);
-    var fallback = function () {
-      return existingOrRefresh(config).then(function (token) {
-        return token || startLogin(config);
-      });
-    };
-
-    if (callback.code && expected && verifier && expected === callback.state) {
-      sessionStorage.removeItem(VERIFIER_KEY);
-      sessionStorage.removeItem(STATE_KEY);
-      // code が使用済み・期限切れでも画面を壊さない。既存トークンの確認・
-      // 再ログインへ落とす。
-      return exchangeCode(config, callback.code, verifier).catch(fallback);
-    }
-
-    if (callback.code || callback.error) {
-      // state 不一致、PKCE の控えが無い重複コールバック(ログイン済みタブで
-      // ブラウザバックすると、有効な Managed Login cookie のせいで新しい
-      // code が自動発行されて戻ってくる)、ログインの取り消し。どれも致命的
-      // ではないので、使い切った控えを掃除して既存トークンの確認へ落とす。
-      sessionStorage.removeItem(VERIFIER_KEY);
-      sessionStorage.removeItem(STATE_KEY);
-    }
-    return fallback();
+  /** #err にメッセージと1つのボタンを出す。ログアウト後とオフラインで使う。 */
+  function showNotice(message, label, onClick) {
+    $('date').textContent = '';
+    $('err').hidden = false;
+    $('err').textContent = message;
+    if (!label) return;
+    var button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'retry';
+    button.textContent = label;
+    button.addEventListener('click', onClick);
+    $('err').appendChild(button);
   }
 
   $('logout').addEventListener('click', function () {
-    var tokens = loadTokens();
-    clearTokens();
-    sessionStorage.removeItem(VERIFIER_KEY);
-    sessionStorage.removeItem(STATE_KEY);
-    if (!AUTH_CONFIG) return window.location.assign('/');
-    var params = new URLSearchParams({
-      client_id: AUTH_CONFIG.clientId,
-      logout_uri: AUTH_CONFIG.logoutUri
+    if (!auth) return window.location.assign('/paper/');
+    // product-local logout。共有Managed Loginのcookieは切らないので、他プロダクト
+    // のSSOは保たれる。ここで再認証へ行くとcookieが生きている限り無言で再ログイン
+    // してしまうため、専用の表示に留めて明示的な「ログイン」を待つ。
+    auth.logout().then(function () {
+      window.location.assign('/paper/');
     });
-    var goToLogout = function () {
-      window.location.assign(AUTH_CONFIG.cognitoDomain + '/logout?' + params.toString());
-    };
-    if (!tokens || !tokens.refresh_token) return goToLogout();
-    // revokeが失敗しても(オフライン等)ローカルログアウトは継続する。
-    fetch(AUTH_CONFIG.cognitoDomain + '/oauth2/revoke', {
-      method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ token: tokens.refresh_token, client_id: AUTH_CONFIG.clientId })
-    }).catch(function () {}).then(goToLogout, goToLogout);
   });
 
   // #39: Passkey登録・ログアウトは1つの起点(account-menu-btn)から開くメニューに集約する
@@ -1153,46 +1010,57 @@ function buildSearchResult(articles, stories, query, filters) {
   fetch('/paper/auth-config.json', { cache: 'no-store' })
     .then(function (r) { if (!r.ok) throw new Error('認証設定 HTTP ' + r.status); return r.json(); })
     .then(function (config) {
-      AUTH_CONFIG = config;
-      return ensureAuthenticated(config).then(function (token) {
-        if (!token) return null; // Hosted UI へ遷移中
+      initAuth(config);
+      // セッションが無ければ共有クライアントがHosted UIへ遷移する
+      // (このPromiseは解決しない)。callbackの処理も同じ経路で行われる。
+      return auth.ensureAuthenticated().then(function () {
         $('logout').hidden = false;
         var passkeyAdd = $('passkey-add');
-        passkeyAdd.href = config.cognitoDomain + '/passkeys/add?' + new URLSearchParams({
-          client_id: config.clientId,
-          redirect_uri: config.redirectUri
-        }).toString();
+        passkeyAdd.href = auth.getPasskeyAddUrl();
         passkeyAdd.hidden = false;
         $('account-menu-btn').hidden = false;
-        var headers = {};
-        headers[config.tokenHeader || 'x-morning-token'] = token;
-        return fetch('/paper/data.json', { cache: 'no-store', headers: headers }).then(function (r) {
-          if (r.status === 401) {
-            clearTokens();
-            return startLogin(config);
-          }
-          if (!r.ok) throw new Error('紙面データ HTTP ' + r.status);
-          return r.json();
+        return auth.getAccessToken().then(function (token) {
+          var headers = {};
+          // CloudFront OAC が Authorization を占有するため、product固有ヘッダを使う。
+          headers[config.tokenHeader || 'x-morning-token'] = token;
+          return fetch('/paper/data.json', { cache: 'no-store', headers: headers }).then(function (r) {
+            if (r.status === 401) {
+              // まだ有効かもしれないRefresh Tokenは捨てない。ログインし直せば
+              // 共有クライアントが更新か再認証を選ぶ。
+              return auth.login();
+            }
+            if (!r.ok) throw new Error('紙面データ HTTP ' + r.status);
+            return r.json();
+          });
         });
       });
     })
     .then(function (data) { if (data) init(data); })
     .catch(function (e) {
-      $('date').textContent = '';
-      $('err').hidden = false;
-      $('err').textContent = '認証または紙面データの読み込みに失敗しました（' + e.message + '）。';
-      // 認可コードは一度しか使えないため、失敗時はURLから落として再ログインできるようにする。
-      try { window.history.replaceState(null, '', window.location.pathname); } catch (_) { /* 非致命 */ }
-      var retry = document.createElement('button');
-      retry.type = 'button';
-      retry.className = 'retry';
-      retry.textContent = 'ログインをやり直す';
-      retry.addEventListener('click', function () {
-        clearTokens();
-        if (AUTH_CONFIG) startLogin(AUTH_CONFIG);
-        else window.location.reload();
-      });
-      $('err').appendChild(retry);
+      // ログアウト済み。共有cookieが生きている限り、ここで再認証へ行くと無言で
+      // 再ログインし、押したログアウトが無かったことになる。
+      if (isSignedOut(e)) {
+        return showNotice('ログアウトしました。', 'ログイン', function () {
+          if (auth) auth.login();
+        });
+      }
+      // オフライン。Hosted UIへ飛ばしても壊れたページに着くだけで、
+      // Refresh Tokenは手元に残っている。
+      if (isTransient(e)) {
+        return showNotice(
+          'オフラインのようです。通信状況を確認して、開き直してください。ログイン状態は保たれています。',
+          '再読み込み',
+          function () { window.location.assign('/paper/'); }
+        );
+      }
+      showNotice(
+        '認証または紙面データの読み込みに失敗しました（' + e.message + '）。',
+        'ログインをやり直す',
+        function () {
+          if (auth) auth.login();
+          else window.location.assign('/paper/');
+        }
+      );
     });
 
   function init(d) {

@@ -13,6 +13,8 @@ var PUBLIC_PATHS = [
   /^\/robots\.txt$/,
   // 認証開始と OAuth コールバックを処理する。機密データは HTML 内に置かない
   /^\/paper\/index\.html$/,
+  // imai-auth の共有認証クライアント（生成物）。index.html が import する。
+  /^\/paper\/vendor\/imai-auth-browser\.js$/,
   /^\/paper\/manifest\.webmanifest$/,
   /^\/paper\/icon\.svg$/,
   /^\/paper\/favicon-32\.png$/,

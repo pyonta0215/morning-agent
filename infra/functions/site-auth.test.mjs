@@ -34,6 +34,8 @@ const PUBLIC = [
   // Cognito ログインを開始する静的な殻。記事・要約は含まない
   '/paper/',
   '/paper/index.html',
+  // 共有認証クライアント。許可し忘れると index.html の import が404になり起動しない
+  '/paper/vendor/imai-auth-browser.js',
   '/paper/manifest.webmanifest',
   '/paper/icon.svg',
   '/paper/icon-512.png',
@@ -52,6 +54,8 @@ const PRIVATE = [
   '/archive/2026-08-10-morning.json',
   '/notes/2026-08-09.md',
   // 素朴なパターンマッチを抜けにいく形
+  '/paper/vendor/../data.json',
+  '/paper/vendor/other.js',
   '/assets/../paper/data.json',
   '/assets/sub/dir/secret.json',
   '/Index.html',
