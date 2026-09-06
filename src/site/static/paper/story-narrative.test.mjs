@@ -13,7 +13,11 @@ import { test } from 'node:test';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const html = fs.readFileSync(path.join(here, 'index.html'), 'utf-8');
-const scriptBody = html.split('<script>\n')[1].split('\n(function () {')[0];
+// index.html の script は type="module"。import 行は new Function で評価できないので落とす。
+const scriptBody = html
+  .split('<script type="module">\n')[1]
+  .split('\n(function () {')[0]
+  .replace(/^import .*$/gm, '');
 
 const { buildStoryNarrative } = new Function(
   `${scriptBody}; return { buildStoryNarrative: buildStoryNarrative };`
