@@ -6,7 +6,7 @@
  * トークンは X-Morning-Token で受け取る。
  */
 import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
-import { CognitoJwtVerifier } from 'aws-jwt-verify';
+import { createCognitoAccessTokenVerifier } from '@pyonta0215/aws-kit/cognito';
 
 export const TOKEN_HEADER = 'x-morning-token';
 
@@ -112,11 +112,8 @@ function makeProductionHandler(): ReturnType<typeof createPaperApiHandler> {
   const userPoolId = required('COGNITO_USER_POOL_ID');
   const clientId = required('COGNITO_CLIENT_ID');
   const bucket = required('SITE_BUCKET');
-  const verifier = CognitoJwtVerifier.create({
-    userPoolId,
-    clientId,
-    tokenUse: 'access',
-  });
+  // 署名・issuer・期限・token_use=access・Client ID の検証は aws-kit（aws-jwt-verify）に委譲する。
+  const verifier = createCognitoAccessTokenVerifier({ userPoolId, clientId });
   const s3 = new S3Client({ region: process.env.AWS_REGION });
 
   return createPaperApiHandler({
@@ -128,7 +125,11 @@ function makeProductionHandler(): ReturnType<typeof createPaperApiHandler> {
       scopes: 'openid email aws.cognito.signin.user.admin',
       tokenHeader: TOKEN_HEADER,
     },
-    verify: (token) => verifier.verify(token),
+    verify: async (token) => {
+      const result = await verifier.verify(token);
+      if (!result.ok) throw new Error(`token_${result.reason}`);
+      return result.claims;
+    },
     getPaperData: async () => {
       const object = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: 'paper/data.json' }));
       if (!object.Body) throw new Error('paper/data.json has no body');

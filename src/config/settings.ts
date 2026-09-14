@@ -1,4 +1,4 @@
-import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
+import { createSsmSecureParameterReader } from '@pyonta0215/aws-kit/ssm';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
@@ -7,13 +7,6 @@ import type { AppConfig, Topic } from '../agents/base.js';
 
 interface TopicsYaml {
   topics: Topic[];
-}
-
-async function getParameter(name: string, region: string): Promise<string> {
-  const client = new SSMClient({ region });
-  const command = new GetParameterCommand({ Name: name, WithDecryption: true });
-  const response = await client.send(command);
-  return response.Parameter?.Value ?? '';
 }
 
 function getTopicsDir(): string {
@@ -58,11 +51,12 @@ export async function loadConfig(): Promise<FullConfig> {
     };
   }
 
-  // 本番: SSM Parameter Store から取得
+  // 本番: SSM Parameter Store から取得。値が空なら、送信先の無いまま進めずにここで落とす。
+  const ssm = createSsmSecureParameterReader({ region });
   const [recipientEmail, senderEmail, anthropicApiKey] = await Promise.all([
-    getParameter('/morning-agent/recipient-email', region),
-    getParameter('/morning-agent/sender-email', region),
-    getParameter('/morning-agent/anthropic-api-key', region),
+    ssm.read('/morning-agent/recipient-email'),
+    ssm.read('/morning-agent/sender-email'),
+    ssm.read('/morning-agent/anthropic-api-key'),
   ]);
 
   process.env.ANTHROPIC_API_KEY = anthropicApiKey;
