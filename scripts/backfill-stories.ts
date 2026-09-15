@@ -138,6 +138,7 @@ async function main(): Promise<void> {
   const done = new Set(ledger.stories.flatMap((s) => Object.keys(s.dailyCounts)));
 
   let cost = 0;
+  let unmeasured = 0;
   const warned = new Set<string>();
   for (const archive of archives) {
     if (done.has(archive.isoDate)) {
@@ -151,13 +152,15 @@ async function main(): Promise<void> {
     }
 
     const r = await assignArticlesToStories(client, ledger, archive.isoDate, articles);
-    cost += r.costUsd;
+    if (r.costUsd === null) unmeasured += 1;
+    else cost += r.costUsd;
     console.log(
       `  ${archive.isoDate}  記事${articles.length}件 → 既存${r.assigned} 新規${r.created}` +
         (r.rejectedCrossTopic > 0 ? ` (トピック跨ぎ差戻し${r.rejectedCrossTopic})` : '') +
         (r.mergedByTitle > 0 ? ` (同名寄せ${r.mergedByTitle})` : '') +
         `  候補${r.candidatesBefore}→${r.candidatesAfter}本` +
-        `  累計ストーリー${ledger.stories.length}本  $${cost.toFixed(4)}`
+        `  累計ストーリー${ledger.stories.length}本  $${cost.toFixed(4)}` +
+        (unmeasured > 0 ? `（ほかに費用不明 ${unmeasured} 回）` : '')
     );
 
     // 受け皿化はその場で気づけないと最後まで走ってから作り直しになる

@@ -34,7 +34,8 @@ export interface AssignmentResult {
   candidatesAfter: number;
   inputTokens: number;
   outputTokens: number;
-  costUsd: number;
+  /** 推定費用。単価の分からないモデルなら null */
+  costUsd: number | null;
 }
 
 /**
