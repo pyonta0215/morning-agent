@@ -3,6 +3,9 @@
 毎朝6:15にニュースを収集し、6:25に閲覧サイトを更新、6:30にブリーフィングメールを送る
 AWS Lambdaエージェント。収集結果とストーリー台帳を蓄積し、紙面とメールはそこから決定的に生成する。
 
+閲覧サイトは `https://news.imai.me`。トップの概観は公開、記事本文を含む紙面（`/paper/`）は
+imai-auth 共有Cognitoのログインが要る。構成と手順は [docs/site-deploy.md](docs/site-deploy.md)。
+
 ## 使用 LLM
 
 **claude-haiku-4-5-20251001**
@@ -99,7 +102,7 @@ aws ssm put-parameter --name /morning-agent/anthropic-api-key \
 
 ```bash
 npm run build   # esbuild でバンドル + topics.yaml を dist/ にコピー
-npm run deploy  # CDK で Lambda + EventBridge をデプロイ
+npm run deploy  # CDK で Lambda + EventBridge + 閲覧サイトをデプロイ（--all）
 ```
 
 CDK bootstrap が未済みの場合は先に実施:
@@ -165,6 +168,7 @@ MCP プロトコルは介さず、service 層（`search` / `trending`）を直�
 | `npx tsx scripts/test-run.ts --test-email` | SES 疎通テスト（テストメールのみ送信） |
 | `npx tsx scripts/test-run.ts --dry-run` | collect → publish → notifyを順に実行し、メール送信のみスキップ |
 | `npm run test-run` | collect → publish → notifyを順に実行 |
+| `npm test` | 紙面・認証・集計・取り込みのユニットテスト一式 |
 
 ## 動作フロー
 
@@ -235,6 +239,7 @@ src/
   site/
     siteData.ts             # アーカイブと台帳から紙面データを生成（LLMなし）
     publish.ts              # 閲覧サイトをS3へ公開
+    static/                 # 閲覧サイトの静的ファイル（公開の概観と、認証付き紙面 /paper/）
   tools/
     webFetchTool.ts         # fetch_webpage ツール定義 & ハンドラー
     researchTool.ts         # research-hub アダプタ（HN/arXiv/GitHub/RSS の取得と正規化）
@@ -254,6 +259,14 @@ infra/
   lib/
     lambdaStack.ts          # Lambda + IAM 最小権限
     schedulerStack.ts       # EventBridge Scheduler (JST 6:15 / 6:25 / 6:30)
+    siteStack.ts            # news.imai.me の S3 / CloudFront / 紙面API（us-east-1）
+  functions/
+    site-path-guard.js      # 既定behaviorの許可リスト（未知パスは404）
+    paper-token-presence.js # トークンの無い /paper/data.json を Lambda 手前で401
+    paper-api.ts            # アクセストークンを検証して紙面データだけ返す
+docs/
+  site-deploy.md            # 閲覧サイトの構成とデプロイ手順
+  morning-agent-ADR.md      # 設計判断の記録
 ```
 
 ## ログ形式 (CloudWatch Logs Insights)
