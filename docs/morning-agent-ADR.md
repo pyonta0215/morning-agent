@@ -174,6 +174,14 @@ web_searchを切ったときと同じ基準で継続可否を判断する。ド�
 以下のプロンプトを Claude Code に順番に投入して実装を進める。
 各プロンプトは独立して動作するよう設計されているが、上から順に実行することを推奨する。
 
+> **これは着手時点の指示書で、現在の仕様書ではない。** 実装が真実源。
+> 特に次の2点は、ここに書かれた形では動いていない。
+>
+> - **GmailAgent / CalendarAgent は main パイプラインに未登録**（`src/agents/` に試作が残っているだけ）
+> - **モデルは Haiku 4.5 に統一済み**。ここに出てくる `claude-sonnet-4-20250514` はもう呼んでいない
+>
+> 現在のフェーズ構成・使用モデル・費用の扱いは README と `src/` を参照する。
+
 ---
 
 ### PROMPT-01: プロジェクト初期化
@@ -331,10 +339,12 @@ CloudWatch Logs Insightsで集計可能な構造化ログを出力するモジ�
 ### logLlm(log: LlmLog): void 関数
 - console.log で { type: 'LLM_CALL', ...log } をJSON出力
 
-### calcCost(usage: { input_tokens: number, output_tokens: number }, model: string): number 関数
-- claude-sonnet-4-20250514 の料金: input $3/1M tokens, output $15/1M tokens
-- claude-haiku-4-5 の料金: input $0.8/1M tokens, output $4/1M tokens
-- 未知のmodelは0を返してwarning出力
+### calcCost(usage, model, webSearchRequests): number | null 関数
+- claude-haiku-4-5-20251001 の料金: input $1/1M tokens, output $5/1M tokens
+  （当初は $0.8 / $4 と書いていたが、それは Haiku 3.5 の価格だった）
+- web_search は1検索 $0.01（モデル非依存）
+- 未知のmodelは **null** を返して warning 出力。0 を返すと「安く済んだ」と読めてしまうため
+- 単価表の実体は `src/utils/llmLogger.ts` の `MODEL_PRICING`
 
 ---
 
