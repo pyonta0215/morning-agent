@@ -34,7 +34,7 @@
     "@aws-sdk/client-secrets-manager": "^3.1014.0",
     "@aws-sdk/client-ses": "^3.1014.0",
     "@aws-sdk/client-ssm": "^3.1014.0",
-    "@pyonta0215/aws-kit": "github:pyonta0215/aws-kit#v0.3.1",
+    "@pyonta0215/aws-kit": "github:pyonta0215/aws-kit#v0.4.0",
     "@pyonta0215/research-kit": "github:pyonta0215/research-kit#v0.1.0",
     "aws-jwt-verify": "^5.2.1",
     "axios": "^1.13.6",
