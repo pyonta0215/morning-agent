@@ -57,7 +57,7 @@ export class MorningAgentLambdaStack extends cdk.Stack {
 
     this.lambdaFunction = new lambda.Function(this, 'MorningAgentFunction', {
       role: lambdaRole,
-      runtime: lambda.Runtime.NODEJS_22_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       handler: 'index.handler',
       code: lambda.Code.fromAsset('../dist'),
       timeout: cdk.Duration.minutes(10),

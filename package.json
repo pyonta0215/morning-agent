@@ -5,7 +5,7 @@
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
-    "build": "esbuild src/index.ts --bundle --platform=node --target=node22 --outfile=dist/index.js --external:@aws-sdk/* --log-override:empty-import-meta=silent && cp src/config/topics.yaml dist/topics.yaml && node -e \"require('fs').copyFileSync(require.resolve('research-hub-mcp/config/feeds.json'),'dist/feeds.json')\" && node -e \"require('fs').cpSync('src/site/static','dist/site',{recursive:true})\"",
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node24 --outfile=dist/index.js --external:@aws-sdk/* --log-override:empty-import-meta=silent && cp src/config/topics.yaml dist/topics.yaml && node -e \"require('fs').copyFileSync(require.resolve('research-hub-mcp/config/feeds.json'),'dist/feeds.json')\" && node -e \"require('fs').cpSync('src/site/static','dist/site',{recursive:true})\"",
     "test:site-auth": "node infra/functions/site-auth.test.mjs",
     "test:paper-api": "node --import tsx --test infra/functions/paper-api.test.ts",
     "test:paper-token-guard": "node infra/functions/paper-token-presence.test.mjs",
