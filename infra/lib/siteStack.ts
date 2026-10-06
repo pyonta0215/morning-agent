@@ -138,7 +138,7 @@ export class MorningAgentSiteStack extends cdk.Stack {
     const paperApi = new nodejs.NodejsFunction(this, 'PaperApiFunction', {
       entry: path.join(__dirname, '..', 'functions', 'paper-api.ts'),
       handler: 'handler',
-      runtime: lambda.Runtime.NODEJS_22_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       architecture: lambda.Architecture.ARM_64,
       timeout: cdk.Duration.seconds(10),
       memorySize: 256,
