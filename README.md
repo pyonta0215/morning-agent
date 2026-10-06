@@ -105,6 +105,8 @@ npm run build   # esbuild でバンドル + topics.yaml を dist/ にコピー
 npm run deploy  # CDK で Lambda + EventBridge + 閲覧サイトをデプロイ（--all）
 ```
 
+ふだんのデプロイは、main へマージすると GitHub Actions（`.github/workflows/deploy.yml`）が同じ内容（テスト → ビルド → `cdk deploy --all`）を動かす。`npm run deploy` は手元からの緊急用として残してある。初回だけ手作業が要る: `infra/github-deploy.yaml` のロールスタックを手元から作る（コマンドはファイル先頭のコメント）、GitHub の Environment `production`（main のみ許可）を作る、変数 `AWS_DEPLOY_ROLE_ARN` にロールの ARN を入れる。
+
 CDK bootstrap が未済みの場合は先に実施:
 
 ```bash

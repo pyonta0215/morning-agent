@@ -1,0 +1,50 @@
+name: deploy
+
+# main へ push したら npm run deploy 相当（ビルド → cdk deploy --all）を動かす。
+# 対象は MorningAgentLambdaStack / MorningAgentSchedulerStack（ap-northeast-1）と MorningAgentSiteStack（us-east-1）。
+# AWS へは OIDC で一時的な認証情報をもらう（長期のアクセスキーは置かない）。
+# ロールは infra/github-deploy.yaml。GitHub Environment「production」（main のみ許可）で動く job だけが引き受けられる。
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# 前のデプロイが終わる前に次を始めない（途中で打ち切りもしない）
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  id-token: write # OIDC
+  contents: read
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: jdx/mise-action@v5
+      - run: mise exec -- npm ci
+
+      # docs/site-deploy.md「ローカル検証」と同じ。壊れたまま本番へ出さない
+      - run: mise exec -- npm test
+      - run: mise exec -- npx tsc --noEmit -p infra/tsconfig.json
+      - run: mise exec -- npm run build
+      - run: mise exec -- npx cdk synth --quiet
+        working-directory: infra
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ap-northeast-1
+
+      # npm run deploy の後半（cd infra && npx cdk deploy --all）。ビルドは上で済んでいる。
+      # CI には承認の入力先が無いので --require-approval never にする
+      - name: cdk deploy
+        working-directory: infra
+        run: mise exec -- npx cdk deploy --all --require-approval never
