@@ -40,8 +40,12 @@ Resources:
             Condition:
               StringEquals:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
-                # immutable subject（owner と repo の数値 ID 入り）に完全一致。名前だけの形式は受け付けない
-                token.actions.githubusercontent.com:sub: repo:pyonta0215@28052193/morning-agent@1189678387:environment:production
+                # このリポジトリは immutable subject 導入前に作られたため、GitHub が送る sub は名前だけの形式
+                # （repo:pyonta0215/<repo>:environment:production。2026-10-07 に CloudTrail で確認）。
+                # 将来 ID 入りの形式に切り替わっても止まらないよう、両方を受け付ける
+                token.actions.githubusercontent.com:sub:
+                  - repo:pyonta0215/morning-agent:environment:production
+                  - repo:pyonta0215@28052193/morning-agent@1189678387:environment:production
       Policies:
         - PolicyName: assume-cdk-bootstrap-roles
           PolicyDocument:
