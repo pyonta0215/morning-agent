@@ -1,0 +1,60 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: morning-agent — GitHub Actions から長期キーなしで cdk deploy するための IAM ロール（OIDC）
+
+# main へマージすると GitHub Actions が cdk deploy --all を動かす。そのための権限をここに置く。
+# このスタックだけは CDK の外に置き、初回にローカルの AWS 認証情報で作る
+# （ロールが無いと GitHub から入れず、また deploy workflow が自分の権限を変えられないようにするため）。
+# テンプレートを直したときも手元から流す:
+#
+#   aws cloudformation deploy \
+#     --template-file infra/github-deploy.yaml \
+#     --stack-name morning-agent-github-deploy \
+#     --region us-east-1 \
+#     --capabilities CAPABILITY_NAMED_IAM \
+#     --no-fail-on-empty-changeset
+#
+# ロールができることは「CDK のブートストラップロールを引き受ける」だけ。
+# CloudFormation の操作・アセットの配置・Lambda 実行ロールの作成などは、ブートストラップ側の
+# deploy-role / file-publishing-role / lookup-role / cfn-exec-role が行う
+# （ブートストラップのロールは ap-northeast-1 と us-east-1 に qualifier hnb659fds で作られている）。
+# GitHub OIDC プロバイダはアカウントに1つだけで、ほかのプロジェクトが作ったものを使う（ここでは作らない）。
+# 引き受けられるのは、このリポジトリの GitHub Environment「production」で動く job だけ
+# （production は main のみ許可する設定にしておく）。
+#
+# 費用: IAM は無料。GitHub Actions は public リポジトリなので無料。
+
+Resources:
+  DeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: morning-agent-github-deploy
+      Description: Run cdk deploy for morning-agent from GitHub Actions (production environment only)
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub 'arn:aws:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com'
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                # immutable subject（owner と repo の数値 ID 入り）に完全一致。名前だけの形式は受け付けない
+                token.actions.githubusercontent.com:sub: repo:pyonta0215@28052193/morning-agent@1189678387:environment:production
+      Policies:
+        - PolicyName: assume-cdk-bootstrap-roles
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: AssumeCdkBootstrapRoles
+                Effect: Allow
+                Action: sts:AssumeRole
+                Resource:
+                  # スタックを置くリージョンだけ（Lambda / Scheduler = ap-northeast-1、Site = us-east-1）
+                  - !Sub 'arn:aws:iam::${AWS::AccountId}:role/cdk-hnb659fds-*-${AWS::AccountId}-ap-northeast-1'
+                  - !Sub 'arn:aws:iam::${AWS::AccountId}:role/cdk-hnb659fds-*-${AWS::AccountId}-us-east-1'
+
+Outputs:
+  DeployRoleArn:
+    Value: !GetAtt DeployRole.Arn
