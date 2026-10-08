@@ -19,8 +19,19 @@ export interface LlmLog {
 const WEB_SEARCH_COST_PER_REQUEST = 0.01;
 
 const MODEL_PRICING: Readonly<Record<string, TokenPrice>> = {
+  'claude-haiku-5-5': { inputPerMillionUsd: 0.1, outputPerMillionUsd: 0.5 },
   // Haiku 4.5 の正価（旧 0.8/4 は Haiku 3.5 の価格だった）
   'claude-haiku-4-5-20251001': { inputPerMillionUsd: 1, outputPerMillionUsd: 5 },
+};
+
+/**
+ * Haiku 5.5 は1リクエストの入力が 100K トークンを超えると、入出力とも5倍の単価になる。
+ * 複数リクエストを合算したログ（WebAgent の web_search 集計）でも合計で判定するので、
+ * 高めに見積もる側に倒れる。
+ */
+const LONG_CONTEXT_ABOVE_INPUT_TOKENS = 100_000;
+const LONG_CONTEXT_PRICING: Readonly<Record<string, TokenPrice>> = {
+  'claude-haiku-5-5': { inputPerMillionUsd: 0.5, outputPerMillionUsd: 2.5 },
 };
 
 /**
@@ -34,7 +45,9 @@ export function calcCost(
   model: string,
   webSearchRequests = 0
 ): number | null {
-  const price = findPrice(MODEL_PRICING, model);
+  const price =
+    (usage.input_tokens > LONG_CONTEXT_ABOVE_INPUT_TOKENS ? findPrice(LONG_CONTEXT_PRICING, model) : undefined) ??
+    findPrice(MODEL_PRICING, model);
   if (!price) {
     console.warn(`[llmLogger] Unknown model: ${model}. Cost is not measured.`);
     return null;

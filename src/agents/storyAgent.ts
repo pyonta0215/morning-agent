@@ -9,7 +9,7 @@ import {
 } from '../utils/storyLedger.js';
 import { narrowCandidates } from '../utils/storyNarrow.js';
 
-const MODEL = 'claude-haiku-4-5-20251001';
+const MODEL = 'claude-haiku-5-5';
 
 /** 割当対象の記事1件 */
 export interface AssignableArticle {
@@ -177,10 +177,13 @@ export async function assignArticlesToStories(
 
   const response = await client.messages.create({
     model: MODEL,
-    max_tokens: 2048,
+    // Haiku 5.5 は思考分も max_tokens に数え、同じ文でもトークン数が約3割増える。
+    // 記事数に比例して伸びる JSON が切れないよう余裕を持たせ、思考は low に抑える
+    max_tokens: 8192,
     system:
       'あなたはニュース編集者です。日々の記事を「継続する話題」の単位にまとめ、話題の流れを追える形に整理してください。',
     output_config: {
+      effort: 'low',
       format: buildAssignmentFormat(
         articles.map((a) => aliasOf.get(a.id)!),
         candidates.map((s) => s.id)

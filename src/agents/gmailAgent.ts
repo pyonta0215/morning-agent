@@ -3,7 +3,7 @@ import type { GmailClient, GmailMessage } from '../clients/gmailClient.js';
 import { type Agent, type AgentInput, type AgentOutput } from './base.js';
 import { logLlm, calcCost } from '../utils/llmLogger.js';
 
-const MODEL = 'claude-haiku-4-5-20251001';
+const MODEL = 'claude-haiku-5-5';
 
 export interface ClassifiedMessage {
   message: GmailMessage;
@@ -46,7 +46,9 @@ export class GmailAgent implements Agent {
 
     const response = await this.client.messages.create({
       model: MODEL,
-      max_tokens: 2048,
+      max_tokens: 4096,
+      // Haiku 5.5 は既定で思考する（思考分も max_tokens に数える）。分類だけなので low に下げる
+      output_config: { effort: 'low' },
       system:
         'あなたはメール管理アシスタントです。メールを分析して重要度と対応要否を判断してください。出力は必ずJSON形式で返してください。',
       messages: [
@@ -93,9 +95,11 @@ ${JSON.stringify(
     });
 
     let classification: ClassificationResult = { replyNeeded: [], fyi: [], skip: [] };
-    if (response.content[0].type === 'text') {
+    // 応答の先頭は thinking ブロックになりうるので、位置ではなく type で選ぶ
+    const textBlock = response.content.find((b) => b.type === 'text');
+    if (textBlock && textBlock.type === 'text') {
       try {
-        const text = response.content[0].text;
+        const text = textBlock.text;
         const jsonMatch = text.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           classification = JSON.parse(jsonMatch[0]) as ClassificationResult;

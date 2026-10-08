@@ -37,7 +37,7 @@ delete process.env.AWS_SECRET_ACCESS_KEY;
 
 const S3_REGION = 'ap-northeast-1';
 
-const MODEL = 'claude-haiku-4-5-20251001';
+const MODEL = 'claude-haiku-5-5';
 /** judge に渡すソース抜粋の上限文字数（トークン抑制） */
 const SOURCE_EXCERPT_MAX = 1200;
 /** タイトル類似による重複判定のしきい値（文字bigramのJaccard係数） */
@@ -188,10 +188,10 @@ async function judgeRun(
 
   const response = await client.messages.create({
     model: MODEL,
-    max_tokens: 8192,
+    max_tokens: 16000,
     system:
       'あなたはニュース配信の品質監査員です。掲載記事を1件ずつ厳密に判定してください。',
-    output_config: { format: JUDGE_FORMAT },
+    output_config: { format: JUDGE_FORMAT, effort: 'low' },
     messages: [
       {
         role: 'user',

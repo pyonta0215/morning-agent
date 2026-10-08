@@ -8,7 +8,7 @@ imai-auth 共有Cognitoのログインが要る。構成と手順は [docs/site-
 
 ## 使用 LLM
 
-**claude-haiku-4-5-20251001**
+**claude-haiku-5-5**
 
 LLMを呼ぶのはcollectフェーズのWeb集約とストーリー割当だけ。publishとnotifyはLLMを呼ばない。
 
@@ -16,7 +16,7 @@ LLMを呼ぶのはcollectフェーズのWeb集約とストーリー割当だけ�
 
 - Node.js 22.x / TypeScript 5.x
 - AWS Lambda + EventBridge Scheduler（JST 6:15 / 6:25 / 6:30）
-- Claude API (Anthropic SDK) — claude-haiku-4-5-20251001
+- Claude API (Anthropic SDK) — claude-haiku-5-5
 - Amazon S3 + CloudFront（アーカイブ、ストーリー台帳、閲覧サイト）
 - AWS SES (メール送信)
 
@@ -232,8 +232,8 @@ src/
     pipeline.ts             # 収集エージェントの実行パイプライン
   agents/
     base.ts                 # Agent インターフェース & 型定義
-    webAgent.ts             # Web・検索・外部研究ソースの収集と集約（Haiku 4.5）
-    storyAgent.ts           # 記事を継続ストーリーへ割り当て（Haiku 4.5）
+    webAgent.ts             # Web・検索・外部研究ソースの収集と集約（Haiku 5.5）
+    storyAgent.ts           # 記事を継続ストーリーへ割り当て（Haiku 5.5）
     gmailAgent.ts           # Gmail収集の試作。現在のmainパイプラインには未登録
     calendarAgent.ts        # Calendar収集の試作。現在のmainパイプラインには未登録
   email/
@@ -280,14 +280,14 @@ LLM 呼び出しは以下の構造化 JSON でログ出力されます:
   "type": "LLM_CALL",
   "traceId": "<Lambda RequestId>",
   "agentId": "web",
-  "model": "claude-haiku-4-5-20251001",
+  "model": "claude-haiku-5-5",
   "inputTokens": 10485,
   "outputTokens": 2990,
-  "costUsd": 0.025435,
+  "costUsd": 0.0025435,
   "durationMs": 54874,
   "success": true
 }
 ```
 
-`costUsd` は `src/utils/llmLogger.ts` の単価を正とし、Haiku 4.5は入力 $1 / 1M tokens、
-出力 $5 / 1M tokensで計算する。Claudeの `web_search` を使った場合は1検索 $0.01を加算する。
+`costUsd` は `src/utils/llmLogger.ts` の単価を正とし、Haiku 5.5は入力 $0.10 / 1M tokens、
+出力 $0.50 / 1M tokensで計算する（1リクエストの入力が100K tokensを超えると入出力とも5倍）。Claudeの `web_search` を使った場合は1検索 $0.01を加算する。

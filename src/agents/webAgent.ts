@@ -6,7 +6,7 @@ import { logLlm, calcCost } from '../utils/llmLogger.js';
 import { normalizeUrl, type DeliveredItem } from '../utils/deliveredHistory.js';
 import { dedupeByNormalizedUrl } from '../utils/articleDedupe.js';
 
-const MODEL = 'claude-haiku-4-5-20251001';
+const MODEL = 'claude-haiku-5-5';
 
 /** プロンプトに載せる配信済みタイトルの上限（トークン抑制） */
 const DELIVERED_TITLES_MAX = 20;
@@ -175,10 +175,11 @@ ${recentDeliveredTitles.map((t) => `・${t}`).join('\n')}
     // 集約: structured outputs でスキーマを強制（1回のみ）
     const summaryResponse = await this.client.messages.create({
       model: MODEL,
-      max_tokens: 8192,
+      max_tokens: 16000,
       system:
         'あなたはニュース編集者です。収集した情報をトピックごとに整理し、各記事へ重要度スコアを付けて出力してください。',
-      output_config: { format: buildSummaryFormat(input.config.topics) },
+      // Haiku 5.5 は既定で思考する（思考分も max_tokens に数える）。集約は low で足りる
+      output_config: { format: buildSummaryFormat(input.config.topics), effort: 'low' },
       messages: [
         {
           role: 'user',
@@ -470,7 +471,8 @@ ${deliveredTitles.map((t) => `  ・${t}`).join('\n')}`
     for (let i = 0; i <= maxContinuations; i++) {
       const response = await this.client.messages.create({
         model: MODEL,
-        max_tokens: 2048,
+        max_tokens: 4096,
+        output_config: { effort: 'low' },
         tools: [
           {
             type: 'web_search_20250305',
