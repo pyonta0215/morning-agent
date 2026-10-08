@@ -35,7 +35,7 @@ delete process.env.AWS_ACCESS_KEY_ID;
 delete process.env.AWS_SECRET_ACCESS_KEY;
 
 const S3_REGION = 'ap-northeast-1';
-const MODEL = 'claude-haiku-4-5-20251001';
+const MODEL = 'claude-haiku-5-5';
 
 // ---- CLI -----------------------------------------------------------
 const argv = process.argv.slice(2);
@@ -165,10 +165,10 @@ async function aggregate(
 ): Promise<{ byTopic: Record<string, AggItem[]>; inTok: number; outTok: number }> {
   const res = await client.messages.create({
     model: MODEL,
-    max_tokens: 8192,
+    max_tokens: 16000,
     system:
       'あなたはニュース編集者です。収集した情報をトピックごとに整理し、各記事へ重要度スコアを付けて出力してください。',
-    output_config: { format: buildSchema(v, topics) },
+    output_config: { format: buildSchema(v, topics), effort: 'low' },
     messages: [{ role: 'user', content: buildPrompt(dateStr, topics, sources) }],
   });
   const textBlock = res.content.find((c) => c.type === 'text');

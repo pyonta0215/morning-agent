@@ -6,7 +6,7 @@ import { logLlm, calcCost } from '../utils/llmLogger.js';
 import { normalizeUrl, type DeliveredItem } from '../utils/deliveredHistory.js';
 import { dedupeByNormalizedUrl } from '../utils/articleDedupe.js';
 
-const MODEL = 'claude-haiku-4-5-20251001';
+const MODEL = 'claude-haiku-5-5';
 
 /** プロンプトに載せる配信済みタイトルの上限（トークン抑制） */
 const DELIVERED_TITLES_MAX = 20;
@@ -175,10 +175,11 @@ ${recentDeliveredTitles.map((t) => `・${t}`).join('\n')}
     // 集約: structured outputs でスキーマを強制（1回のみ）
     const summaryResponse = await this.client.messages.create({
       model: MODEL,
-      max_tokens: 8192,
+      max_tokens: 16000,
       system:
         'あなたはニュース編集者です。収集した情報をトピックごとに整理し、各記事へ重要度スコアを付けて出力してください。',
-      output_config: { format: buildSummaryFormat(input.config.topics) },
+      // Haiku 5.5 は既定で思考する（思考分も max_tokens に数える）。集約は low で足りる
+      output_config: { format: buildSummaryFormat(input.config.topics), effort: 'low' },
       messages: [
         {
           role: 'user',
@@ -360,12 +361,15 @@ ${fetchedContent}`,
     let totalInput = 0;
     let totalOutput = 0;
     let totalRequests = 0;
+    // 長文脈料金は1リクエスト単位で決まるので、費用はリクエストごとに計算した値を足す
+    let totalCost: number | null = 0;
 
     searchTopics.forEach((t, idx) => {
       const res = results[idx];
       totalInput += res.inputTokens;
       totalOutput += res.outputTokens;
       totalRequests += res.webSearchRequests;
+      totalCost = totalCost === null || res.costUsd === null ? null : totalCost + res.costUsd;
 
       // byTopic にマージ。URL一致dedup（seen）に加え、トピック重複ガードで
       // 既存fetch記事・既配信記事と同一ストーリー（モデル名＋版数などの識別トークン一致）の
@@ -401,11 +405,7 @@ ${fetchedContent}`,
       model: MODEL,
       inputTokens: totalInput,
       outputTokens: totalOutput,
-      costUsd: calcCost(
-        { input_tokens: totalInput, output_tokens: totalOutput },
-        MODEL,
-        totalRequests
-      ),
+      costUsd: totalCost,
       durationMs: Date.now() - startTime,
       success: true,
       webSearchRequests: totalRequests,
@@ -424,6 +424,8 @@ ${fetchedContent}`,
     inputTokens: number;
     outputTokens: number;
     webSearchRequests: number;
+    /** リクエストごとの推定費用の合計。単価の分からないモデルなら null */
+    costUsd: number | null;
   }> {
     const maxUses = Number(process.env.WEB_SEARCH_MAX_USES ?? WEB_SEARCH_MAX_USES_DEFAULT);
 
@@ -460,6 +462,7 @@ ${deliveredTitles.map((t) => `  ・${t}`).join('\n')}`
     let inputTokens = 0;
     let outputTokens = 0;
     let webSearchRequests = 0;
+    let costUsd: number | null = 0;
     let finalText = '';
     // web_search が実際に返した結果URL（citation照合の真実集合）。
     // Claude の出力JSONはこの集合に含まれるURLだけを残し、捏造URLを弾く。
@@ -470,7 +473,8 @@ ${deliveredTitles.map((t) => `  ・${t}`).join('\n')}`
     for (let i = 0; i <= maxContinuations; i++) {
       const response = await this.client.messages.create({
         model: MODEL,
-        max_tokens: 2048,
+        max_tokens: 4096,
+        output_config: { effort: 'low' },
         tools: [
           {
             type: 'web_search_20250305',
@@ -484,7 +488,10 @@ ${deliveredTitles.map((t) => `  ・${t}`).join('\n')}`
 
       inputTokens += response.usage.input_tokens;
       outputTokens += response.usage.output_tokens;
-      webSearchRequests += response.usage.server_tool_use?.web_search_requests ?? 0;
+      const requests = response.usage.server_tool_use?.web_search_requests ?? 0;
+      webSearchRequests += requests;
+      const cost = calcCost(response.usage, MODEL, requests);
+      costUsd = costUsd === null || cost === null ? null : costUsd + cost;
 
       // 各レスポンス（pause_turn 中継分も含む）から web_search の実結果URLを集める
       for (const block of response.content) {
@@ -549,7 +556,7 @@ ${deliveredTitles.map((t) => `  ・${t}`).join('\n')}`
     console.log(
       `[WebAgent] searchTopic ${topic.id}: parsed ${parsedItems.length} → verified ${items.length} items from web_search`
     );
-    return { items, inputTokens, outputTokens, webSearchRequests };
+    return { items, inputTokens, outputTokens, webSearchRequests, costUsd };
   }
 }
 

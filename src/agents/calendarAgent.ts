@@ -3,7 +3,7 @@ import type { CalendarClient, CalendarEvent } from '../clients/calendarClient.js
 import { type Agent, type AgentInput, type AgentOutput } from './base.js';
 import { logLlm, calcCost } from '../utils/llmLogger.js';
 
-const MODEL = 'claude-haiku-4-5-20251001';
+const MODEL = 'claude-haiku-5-5';
 
 export interface CalendarAgentData {
   events: CalendarEvent[];
@@ -31,7 +31,9 @@ export class CalendarAgent implements Agent {
     if (events.length > 0) {
       const message = await this.client.messages.create({
         model: MODEL,
-        max_tokens: 1024,
+        max_tokens: 2048,
+        // Haiku 5.5 は既定で思考する（思考分も max_tokens に数える）。要約だけなので low に下げる
+        output_config: { effort: 'low' },
         system:
           'あなたは朝のブリーフィングアシスタントです。簡潔・実用的な日本語で出力してください。',
         messages: [
@@ -50,8 +52,11 @@ ${JSON.stringify(events, null, 2)}
         ],
       });
 
-      summary =
-        message.content[0].type === 'text' ? message.content[0].text : '';
+      // 応答の先頭は thinking ブロックになりうるので、位置ではなく type で選ぶ
+      summary = message.content
+        .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+        .map((b) => b.text)
+        .join('');
       inputTokens = message.usage.input_tokens;
       outputTokens = message.usage.output_tokens;
     }
