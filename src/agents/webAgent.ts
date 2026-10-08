@@ -361,12 +361,15 @@ ${fetchedContent}`,
     let totalInput = 0;
     let totalOutput = 0;
     let totalRequests = 0;
+    // 長文脈料金は1リクエスト単位で決まるので、費用はリクエストごとに計算した値を足す
+    let totalCost: number | null = 0;
 
     searchTopics.forEach((t, idx) => {
       const res = results[idx];
       totalInput += res.inputTokens;
       totalOutput += res.outputTokens;
       totalRequests += res.webSearchRequests;
+      totalCost = totalCost === null || res.costUsd === null ? null : totalCost + res.costUsd;
 
       // byTopic にマージ。URL一致dedup（seen）に加え、トピック重複ガードで
       // 既存fetch記事・既配信記事と同一ストーリー（モデル名＋版数などの識別トークン一致）の
@@ -402,11 +405,7 @@ ${fetchedContent}`,
       model: MODEL,
       inputTokens: totalInput,
       outputTokens: totalOutput,
-      costUsd: calcCost(
-        { input_tokens: totalInput, output_tokens: totalOutput },
-        MODEL,
-        totalRequests
-      ),
+      costUsd: totalCost,
       durationMs: Date.now() - startTime,
       success: true,
       webSearchRequests: totalRequests,
@@ -425,6 +424,8 @@ ${fetchedContent}`,
     inputTokens: number;
     outputTokens: number;
     webSearchRequests: number;
+    /** リクエストごとの推定費用の合計。単価の分からないモデルなら null */
+    costUsd: number | null;
   }> {
     const maxUses = Number(process.env.WEB_SEARCH_MAX_USES ?? WEB_SEARCH_MAX_USES_DEFAULT);
 
@@ -461,6 +462,7 @@ ${deliveredTitles.map((t) => `  ・${t}`).join('\n')}`
     let inputTokens = 0;
     let outputTokens = 0;
     let webSearchRequests = 0;
+    let costUsd: number | null = 0;
     let finalText = '';
     // web_search が実際に返した結果URL（citation照合の真実集合）。
     // Claude の出力JSONはこの集合に含まれるURLだけを残し、捏造URLを弾く。
@@ -486,7 +488,10 @@ ${deliveredTitles.map((t) => `  ・${t}`).join('\n')}`
 
       inputTokens += response.usage.input_tokens;
       outputTokens += response.usage.output_tokens;
-      webSearchRequests += response.usage.server_tool_use?.web_search_requests ?? 0;
+      const requests = response.usage.server_tool_use?.web_search_requests ?? 0;
+      webSearchRequests += requests;
+      const cost = calcCost(response.usage, MODEL, requests);
+      costUsd = costUsd === null || cost === null ? null : costUsd + cost;
 
       // 各レスポンス（pause_turn 中継分も含む）から web_search の実結果URLを集める
       for (const block of response.content) {
@@ -551,7 +556,7 @@ ${deliveredTitles.map((t) => `  ・${t}`).join('\n')}`
     console.log(
       `[WebAgent] searchTopic ${topic.id}: parsed ${parsedItems.length} → verified ${items.length} items from web_search`
     );
-    return { items, inputTokens, outputTokens, webSearchRequests };
+    return { items, inputTokens, outputTokens, webSearchRequests, costUsd };
   }
 }
 

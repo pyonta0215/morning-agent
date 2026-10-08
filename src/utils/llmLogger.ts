@@ -26,8 +26,8 @@ const MODEL_PRICING: Readonly<Record<string, TokenPrice>> = {
 
 /**
  * Haiku 5.5 は1リクエストの入力が 100K トークンを超えると、入出力とも5倍の単価になる。
- * 複数リクエストを合算したログ（WebAgent の web_search 集計）でも合計で判定するので、
- * 高めに見積もる側に倒れる。
+ * 判定は1リクエスト単位なので、calcCost には合算前の usage を渡すこと
+ * （複数リクエストは1件ずつ計算してから足す）。
  */
 const LONG_CONTEXT_ABOVE_INPUT_TOKENS = 100_000;
 const LONG_CONTEXT_PRICING: Readonly<Record<string, TokenPrice>> = {
